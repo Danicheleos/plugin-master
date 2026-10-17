@@ -1,0 +1,21 @@
+{
+  "name": "web",
+  "version": "0.0.1",
+  "private": true,
+  "dependencies": {
+    "@mantine/core": "^9.7.2",
+    "@mantine/hooks": "^9.7.2",
+    "@monaco-editor/react": "^4.7.0",
+    "@pm/protocol": "workspace:*",
+    "@tanstack/react-query": "^5.104.3",
+    "monaco-editor": "^0.57.0",
+    "react-markdown": "^10.1.0",
+    "react-router": "^8.4.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "postcss": "^8.5.30",
+    "postcss-preset-mantine": "^1.18.0",
+    "sass-embedded": "^1.105.2"
+  }
+}

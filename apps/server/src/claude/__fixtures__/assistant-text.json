@@ -1,0 +1,25 @@
+{
+  "type": "assistant",
+  "message": {
+    "model": "claude-opus-5-5",
+    "id": "msg_011Cg76YgKwdHiMYzfExEtCL",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "Done. I created `hi.txt` with the content \"hi\"."
+      }
+    ],
+    "container": null,
+    "stop_reason": null,
+    "stop_sequence": null,
+    "stop_details": null,
+    "input_transformations": []
+  },
+  "parent_tool_use_id": null,
+  "session_id": "bea2d6b3-9e60-440a-a2f7-4b4afcb1ed39",
+  "uuid": "ae47db18-9d0a-43e0-b53e-6842af7cbccc",
+  "timestamp": "2026-10-17T03:26:11.818Z",
+  "request_id": "req_011Cg76Yg1LeX4qXvrDerA13"
+}

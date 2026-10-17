@@ -1,0 +1,28 @@
+{
+  "type": "assistant",
+  "message": {
+    "model": "claude-opus-5-5",
+    "id": "msg_011Cg76YgKwdHiMYzfExEtCL",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "sig"
+      }
+    ],
+    "container": null,
+    "stop_reason": null,
+    "stop_sequence": null,
+    "stop_details": null,
+    "input_transformations": []
+  },
+  "parent_tool_use_id": null,
+  "session_id": "bea2d6b3-9e60-440a-a2f7-4b4afcb1ed39",
+  "uuid": "1874b050-f69f-406c-ab33-cc033494efb2",
+  "timestamp": "2026-10-17T03:26:11.815Z",
+  "request_id": "req_011Cg76Yg1LeX4qXvrDerA13",
+  "thinking_duration_ms": 435,
+  "thinking_display": "updates"
+}

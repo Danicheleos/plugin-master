@@ -1,1 +1,11 @@
 docs/*
+node_modules
+dist
+.nx
+coverage
+tmp
+out-tsc
+.DS_Store
+
+vitest.config.*.timestamp*
+vite.config.*.timestamp*

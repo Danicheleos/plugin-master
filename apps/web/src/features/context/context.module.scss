@@ -1,0 +1,15 @@
+.unpinned {
+  opacity: 0.25;
+}
+
+.summary {
+  padding: var(--mantine-spacing-xs);
+  border-bottom: 1px solid var(--mantine-color-default-border);
+  font-size: var(--mantine-font-size-sm);
+
+  ul {
+    margin: 4px 0;
+    padding-left: 18px;
+    overflow-wrap: anywhere;
+  }
+}

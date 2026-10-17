@@ -1,0 +1,21 @@
+.tree {
+  overflow: auto;
+  padding: var(--mantine-spacing-xs);
+  border-right: 1px solid var(--mantine-color-default-border);
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+
+  > :last-child {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+.header {
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}

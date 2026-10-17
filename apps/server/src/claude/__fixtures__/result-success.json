@@ -1,0 +1,49 @@
+{
+  "duration_api_ms": 4610,
+  "stop_reason": "end_turn",
+  "session_id": "bea2d6b3-9e60-440a-a2f7-4b4afcb1ed39",
+  "total_cost_usd": 0.1845079,
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "safety_stops": 0,
+  "is_error": false,
+  "num_turns": 2,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "Done. I created `hi.txt` with the content \"hi\".",
+  "ttft_ms": 2910,
+  "type": "result",
+  "duration_ms": 4293,
+  "uuid": "c8521594-87f3-4120-a800-fc1f9ca9f42a",
+  "ttft_stream_ms": 1897,
+  "time_to_request_ms": 498,
+  "first_content_frame_ms": 1897,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

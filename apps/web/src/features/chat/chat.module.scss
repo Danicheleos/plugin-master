@@ -1,0 +1,27 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.header,
+.input {
+  padding: var(--mantine-spacing-xs);
+}
+
+.header {
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+.input {
+  border-top: 1px solid var(--mantine-color-default-border);
+}
+
+.list {
+  flex: 1;
+  overflow: auto;
+  padding: var(--mantine-spacing-xs);
+  font-size: var(--mantine-font-size-sm);
+  overflow-wrap: anywhere;
+}

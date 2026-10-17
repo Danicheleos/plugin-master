@@ -1,0 +1,22 @@
+.page {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 320px;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+}
+
+.header {
+  grid-column: 1 / -1;
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+.editor {
+  min-width: 0;
+  min-height: 0;
+}
+
+.chat {
+  min-height: 0;
+  border-left: 1px solid var(--mantine-color-default-border);
+}
