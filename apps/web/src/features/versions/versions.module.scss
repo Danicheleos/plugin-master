@@ -1,0 +1,53 @@
+.layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--mantine-color-default-border);
+}
+
+.list {
+  width: 40%;
+  overflow: auto;
+  border-right: 1px solid var(--mantine-color-default-border);
+}
+
+.compare {
+  flex: 1;
+  overflow: auto;
+  padding: var(--mantine-spacing-xs);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+  padding: 2px var(--mantine-spacing-xs);
+  cursor: pointer;
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+
+  &:hover {
+    background: var(--mantine-color-default-hover);
+  }
+}
+
+.selected {
+  background: var(--mantine-primary-color-light);
+}
+
+.spark {
+  max-width: none;
+  margin: 0;
+}
+
+.subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

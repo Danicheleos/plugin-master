@@ -1,0 +1,225 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--mantine-spacing-sm);
+}
+
+.muted {
+  opacity: 0.5;
+}
+
+.graders {
+  margin: 0 0 var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  padding-left: var(--mantine-spacing-xs);
+  border-left: 2px solid var(--mantine-color-default-border);
+}
+
+.frame {
+  width: 100%;
+  height: 75vh;
+  border: 1px solid var(--mantine-color-default-border);
+}
+
+.output {
+  max-height: 40vh;
+  margin: 0;
+  padding: var(--mantine-spacing-xs);
+  overflow: auto;
+  font-family: var(--mantine-font-family-monospace);
+  font-size: var(--mantine-font-size-xs);
+  white-space: pre-wrap;
+  border: 1px solid var(--mantine-color-default-border);
+}
+
+.stderr {
+  color: var(--mantine-color-red-text);
+}
+
+.metric {
+  max-width: 360px;
+  margin: var(--mantine-spacing-xs) 0;
+  color: var(--mantine-primary-color-filled);
+  font-size: var(--mantine-font-size-xs);
+
+  svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+}
+
+.gridMetric {
+  @extend .metric;
+  max-width: none;
+  margin: 0;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--mantine-spacing-xs);
+  margin-bottom: var(--mantine-spacing-xs);
+}
+
+.axis {
+  stroke: var(--mantine-color-default-border);
+}
+
+.legend {
+  color: var(--mantine-color-dimmed);
+}
+
+.baseline {
+  color: var(--mantine-color-dimmed);
+
+  polyline {
+    stroke: currentcolor;
+    stroke-width: 1.25;
+  }
+
+  circle {
+    fill: currentcolor;
+  }
+}
+
+.hollow {
+  fill: var(--mantine-color-body);
+}
+
+.mark {
+  fill: currentcolor;
+}
+
+.picked {
+  stroke: var(--mantine-color-text);
+  stroke-width: 1.5;
+}
+
+.pickable {
+  cursor: pointer;
+}
+
+.turns,
+.nested {
+  margin: 0;
+  padding-left: var(--mantine-spacing-lg);
+}
+
+.nested {
+  border-left: 2px solid var(--mantine-color-default-border);
+}
+
+.excerpt {
+  white-space: pre-wrap;
+}
+
+.tool {
+  margin-left: var(--mantine-spacing-xs);
+}
+
+.compare {
+  margin-bottom: var(--mantine-spacing-md);
+}
+
+.changed {
+  color: light-dark(var(--mantine-color-yellow-1), var(--mantine-color-yellow-9));
+  width: 150px;
+}
+
+.suite {
+  margin-bottom: var(--mantine-spacing-lg);
+}
+
+.baselineSection {
+  margin-bottom: var(--mantine-spacing-sm);
+}
+
+.trend {
+  width: 80px;
+  margin: 0;
+
+  figcaption {
+    display: none;
+  }
+}
+
+.flow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-sm);
+  margin-top: var(--mantine-spacing-sm);
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+  position: relative;
+
+  // connector from the previous block
+  &::before {
+    content: '';
+    position: absolute;
+    left: var(--mantine-spacing-md);
+    top: calc(-1 * var(--mantine-spacing-sm));
+    height: var(--mantine-spacing-sm);
+    border-left: 2px solid var(--mantine-color-default-border);
+  }
+
+  &:first-child::before {
+    display: none;
+  }
+}
+
+.block {
+  min-width: 0;
+}
+
+.branch {
+  margin-left: var(--mantine-spacing-xl);
+  border-left: 2px solid var(--mantine-color-default-border);
+  padding-left: var(--mantine-spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+}
+
+.lane {
+  margin-left: var(--mantine-spacing-md);
+  padding-left: var(--mantine-spacing-sm);
+  border-left: 2px dashed var(--mantine-color-default-border);
+}
+
+.chartWrap {
+  position: relative;
+}
+
+.guide {
+  stroke: var(--mantine-color-dimmed);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.chartTip {
+  position: absolute;
+  bottom: 100%;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 4px;
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-text);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.preText {
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

@@ -1,3 +1,4 @@
+import { FeaturesSchema } from '@pm/protocol';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -79,12 +80,25 @@ describe('spaces service', () => {
     await service.setConfig(space.id, { masterContext: ['x.md'] });
     expect(await service.getConfig(space.id)).toEqual({
       masterContext: ['x.md'],
+      activePlan: null,
+      evalTrusted: false,
+      evalBaselines: {},
+      evalRefs: {},
+
+      features: FeaturesSchema.parse({}),
     });
     await expect(
       service.setConfig(space.id, { masterContext: ['../x'] }),
     ).rejects.toMatchObject({ code: 'INVALID_CONTEXT_PATH' });
     await rm(join(path, '.plugin-master/config.json'));
-    expect(await service.getConfig(space.id)).toEqual({ masterContext: [] });
+    expect(await service.getConfig(space.id)).toEqual({
+      masterContext: [],
+      activePlan: null,
+      evalTrusted: false,
+      evalBaselines: {},
+      evalRefs: {},
+      features: FeaturesSchema.parse({}),
+    });
     await service.remove(space.id);
     expect(await service.list()).toEqual([]);
     await expect(readFile(join(path, 'CLAUDE.md'))).resolves.toBeDefined();

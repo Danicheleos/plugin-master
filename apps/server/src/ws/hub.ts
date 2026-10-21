@@ -12,6 +12,7 @@ import { verifyWsRequest } from '../security/guard';
 export type Client = { send(msg: ServerMessage): void };
 type Result = void | Promise<void>;
 type MessageType = Exclude<ClientMessage['type'], 'subscribe' | 'unsubscribe'>;
+type LeaveHandler = (spaceId: string, c: Client) => void;
 
 /** The space a raw client message refers to, if it is parseable and has one. */
 function spaceIdOf(raw: string): string | undefined {
@@ -32,6 +33,7 @@ export function createHub(config: Config) {
   const handlers = new Map<string, (m: ClientMessage, c: Client) => Result>();
   const subscribeHandlers: ((spaceId: string, c: Client) => Result)[] = [];
   const idleHandlers: ((spaceId: string) => void)[] = [];
+  const leaveHandlers: LeaveHandler[] = [];
 
   const hasSubscribers = (spaceId: string) =>
     [...spacesBySocket.values()].some((s) => s.has(spaceId));
@@ -45,10 +47,14 @@ export function createHub(config: Config) {
     }
     if (msg.type === 'unsubscribe') {
       subs.delete(msg.spaceId);
+      leaveHandlers.forEach((h) => h(msg.spaceId, client));
       if (!hasSubscribers(msg.spaceId))
         idleHandlers.forEach((h) => h(msg.spaceId));
       return;
     }
+    // a watch of an unsubscribed space would never be released on disconnect
+    if (msg.type === 'fs.watch' && !subs.has(msg.spaceId))
+      throw new Error('Not subscribed to this space');
     const handler = handlers.get(msg.type);
     if (!handler) throw new Error(`Unsupported message type: ${msg.type}`);
     await handler(msg, client);
@@ -85,8 +91,10 @@ export function createHub(config: Config) {
         });
         socket.on('close', () => {
           spacesBySocket.delete(client);
-          for (const id of subs)
+          for (const id of subs) {
+            leaveHandlers.forEach((h) => h(id, client));
             if (!hasSubscribers(id)) idleHandlers.forEach((h) => h(id));
+          }
         });
       },
     );
@@ -106,6 +114,10 @@ export function createHub(config: Config) {
     },
     onSubscribe(handler: (spaceId: string, c: Client) => Result): void {
       subscribeHandlers.push(handler);
+    },
+    /** Called when a client unsubscribes from a space or disconnects. */
+    onLeave(handler: LeaveHandler): void {
+      leaveHandlers.push(handler);
     },
     /** Called when the last subscriber of a space disconnects. */
     onIdle(handler: (spaceId: string) => void): void {

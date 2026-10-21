@@ -1,5 +1,9 @@
+import { afterEach } from 'vitest';
+
+// evals settings persist in localStorage: start every test from the defaults
+afterEach(() => localStorage.clear());
+
 // Mantine needs these browser APIs, which jsdom lacks.
-window.HTMLElement.prototype.scrollIntoView = () => undefined;
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -20,3 +24,8 @@ window.ResizeObserver = class {
   unobserve = () => undefined;
   disconnect = () => undefined;
 };
+
+// Textarea `autosize` listens to font loading
+Object.defineProperty(document, 'fonts', {
+  value: { addEventListener: () => undefined, removeEventListener: () => undefined },
+});

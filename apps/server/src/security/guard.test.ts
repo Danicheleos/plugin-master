@@ -4,7 +4,7 @@ import type { Config } from '../config';
 
 const config: Config = {
   port: 0,
-  webOrigins: ['http://localhost:4200'],
+  webOrigins: ['http://localhost:5100'],
   token: 'secret',
   home: '/nonexistent-pm-home',
 };
@@ -66,5 +66,34 @@ describe('guard', () => {
       headers: { ...auth, host: 'localhost:4317' },
     });
     expect(res.statusCode).toBe(200);
+  });
+});
+
+describe('guard in LAN mode', () => {
+  const lan: Config = {
+    ...config,
+    hosts: ['localhost', '192.168.1.7'],
+    webOrigins: [...config.webOrigins, 'http://192.168.1.7:5100'],
+  };
+  const lanApp = buildApp(lan);
+  const host = '192.168.1.7:5100';
+
+  it('accepts the LAN Host and Origin only when enabled', async () => {
+    const headers = { ...auth, host, origin: `http://${host}` };
+    expect(
+      (await lanApp.inject({ url: '/api/spaces', headers })).statusCode,
+    ).toBe(200);
+    expect(
+      (await buildApp(config).inject({ url: '/api/spaces', headers }))
+        .statusCode,
+    ).toBe(403);
+  });
+
+  it('still rejects foreign Host and Origin, and a missing token', async () => {
+    const get = (headers: Record<string, string>) =>
+      lanApp.inject({ url: '/api/spaces', headers }).then((r) => r.statusCode);
+    expect(await get({ ...auth, host: 'evil.com' })).toBe(403);
+    expect(await get({ ...auth, host, origin: 'http://evil.com' })).toBe(403);
+    expect(await get({ host })).toBe(401);
   });
 });

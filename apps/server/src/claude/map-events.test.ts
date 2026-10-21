@@ -1,8 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type {
+  SDKMessage,
+  SessionMessage,
+} from '@anthropic-ai/claude-agent-sdk';
 import { describe, expect, it } from 'vitest';
-import { mapSdkMessage } from './map-events';
+import {
+  describeToolUse,
+  mapSdkMessage,
+  mapSessionMessage,
+  mapTaskMessage,
+} from './map-events';
 
 // Real messages captured from a live SDK run (trimmed), see __fixtures__/.
 const fixture = (name: string) =>
@@ -75,5 +83,104 @@ describe('mapSdkMessage', () => {
     expect(mapSdkMessage(asMsg({ type: 'system', subtype: 'init' }))).toEqual(
       [],
     );
+  });
+
+  it('maps stored session messages and skips subagent internals', () => {
+    const m = (type: string, message: unknown, parent: string | null = null) =>
+      ({
+        type,
+        uuid: 'u',
+        session_id: 's',
+        message,
+        parent_tool_use_id: parent,
+        parent_agent_id: null,
+      }) as SessionMessage;
+    expect(
+      [
+        m('user', { role: 'user', content: 'hi' }),
+        m('assistant', { content: [{ type: 'text', text: 'yo' }] }),
+        m('user', {
+          content: [{ type: 'tool_result', tool_use_id: 't', content: 'ok' }],
+        }),
+        m('assistant', { content: [{ type: 'text', text: 'sub' }] }, 'toolu_1'),
+      ].flatMap(mapSessionMessage),
+    ).toEqual([
+      { kind: 'user', text: 'hi' },
+      { kind: 'text', text: 'yo' },
+      { kind: 'tool_result', toolUseId: 't', isError: false, preview: 'ok' },
+    ]);
+  });
+});
+
+// Synthetic messages built from the SDK types (not captured from a live run).
+describe('mapTaskMessage', () => {
+  it('maps task_started, task_progress and task_notification', () => {
+    expect(
+      mapTaskMessage(
+        asMsg({
+          type: 'system',
+          subtype: 'task_started',
+          task_id: 'k1',
+          description: 'Research',
+          subagent_type: 'Explore',
+        }),
+      ),
+    ).toEqual({
+      id: 'k1',
+      description: 'Research',
+      subagentType: 'Explore',
+      status: 'running',
+      tokens: 0,
+      toolUses: 0,
+    });
+    expect(
+      mapTaskMessage(
+        asMsg({
+          type: 'system',
+          subtype: 'task_progress',
+          task_id: 'k1',
+          description: 'Research',
+          usage: { total_tokens: 900, tool_uses: 3, duration_ms: 5 },
+          last_tool_name: 'Read',
+        }),
+      ),
+    ).toEqual({
+      id: 'k1',
+      description: 'Research',
+      tokens: 900,
+      toolUses: 3,
+      lastTool: 'Read',
+    });
+    expect(
+      mapTaskMessage(
+        asMsg({
+          type: 'system',
+          subtype: 'task_notification',
+          task_id: 'k1',
+          status: 'completed',
+          summary: 'ok',
+          usage: { total_tokens: 1000, tool_uses: 4, duration_ms: 9 },
+        }),
+      ),
+    ).toEqual({ id: 'k1', status: 'completed', tokens: 1000, toolUses: 4 });
+  });
+
+  it('ignores other messages', () => {
+    expect(mapTaskMessage(fixture('result-success'))).toBeUndefined();
+    expect(
+      mapTaskMessage(asMsg({ type: 'system', subtype: 'init' })),
+    ).toBeUndefined();
+  });
+});
+
+describe('describeToolUse', () => {
+  it('summarizes the main input field', () => {
+    expect(describeToolUse('Edit', { file_path: '/a/b.md' })).toBe(
+      'Edit: /a/b.md',
+    );
+    expect(describeToolUse('Bash', { command: 'ls\n  -la' })).toBe(
+      'Bash: ls -la',
+    );
+    expect(describeToolUse('Foo', {})).toBe('Foo');
   });
 });

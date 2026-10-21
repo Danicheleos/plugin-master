@@ -1,0 +1,15 @@
+{"type":"system","subtype":"hook_started","hook_name":"SessionStart:startup"}
+{"type":"system","subtype":"init","model":"test-model","tools":["Bash","Read","Task"]}
+{"type":"assistant","message":{"id":"msg_1","content":[{"type":"thinking","thinking":"Plan the approach."}],"usage":{"input_tokens":2,"cache_creation_input_tokens":1000,"cache_read_input_tokens":0,"output_tokens":5}},"parent_tool_use_id":null}
+{"type":"assistant","message":{"id":"msg_1","content":[{"type":"text","text":"Looking around."},{"type":"tool_use","id":"toolu_a","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":2,"cache_creation_input_tokens":1000,"cache_read_input_tokens":0,"output_tokens":20}},"parent_tool_use_id":null}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_a","content":"a.txt\nb.txt","is_error":false}]},"parent_tool_use_id":null}
+{"type":"assistant","message":{"id":"msg_2","content":[{"type":"tool_use","id":"toolu_b","name":"Task","input":{"description":"Do it","prompt":"p"}}],"usage":{"input_tokens":3,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":30}},"parent_tool_use_id":null}
+{"type":"system","subtype":"task_started","task_id":"t1","tool_use_id":"toolu_b","description":"Do it","subagent_type":"helper"}
+{"type":"assistant","message":{"id":"msg_s1","content":[{"type":"tool_use","id":"toolu_c","name":"Read","input":{"file_path":"/x"}}],"usage":{"input_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":500,"output_tokens":9}},"parent_tool_use_id":"toolu_b"}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_c","content":[{"type":"text","text":"no such file"}],"is_error":true}]},"parent_tool_use_id":"toolu_b"}
+{"type":"system","subtype":"task_progress","task_id":"t1","tool_use_id":"toolu_b","usage":{"total_tokens":600,"tool_uses":1,"duration_ms":1200}}
+{"type":"system","subtype":"task_notification","task_id":"t1","tool_use_id":"toolu_b","status":"completed","summary":"done"}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_b","content":"report","is_error":false}]},"parent_tool_use_id":null}
+{"type":"assistant","message":{"id":"msg_3","content":[{"type":"text","text":"All done."}],"usage":{"input_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":1100,"output_tokens":7}},"parent_tool_use_id":null}
+not json
+{"type":"result","subtype":"success","is_error":false,"num_turns":3,"total_cost_usd":0.05,"duration_ms":4000,"duration_api_ms":3000,"usage":{"input_tokens":10,"output_tokens":71,"cache_read_input_tokens":2600,"cache_creation_input_tokens":1100},"modelUsage":{},"permission_denials":[{"tool_name":"Write"}]}

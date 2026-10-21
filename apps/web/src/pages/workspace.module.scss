@@ -1,22 +1,18 @@
 .page {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 320px;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   height: 100vh;
+  // phones: 100vh includes the browser bars, so the page itself scrolled by about their height
+  height: 100dvh;
+  overflow: auto;
 }
 
 .header {
-  grid-column: 1 / -1;
   padding: var(--mantine-spacing-xs) var(--mantine-spacing-md);
   border-bottom: 1px solid var(--mantine-color-default-border);
 }
 
-.editor {
-  min-width: 0;
+.dashboard {
+  flex: 1;
   min-height: 0;
-}
-
-.chat {
-  min-height: 0;
-  border-left: 1px solid var(--mantine-color-default-border);
 }

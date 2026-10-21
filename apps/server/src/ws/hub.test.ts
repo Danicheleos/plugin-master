@@ -9,11 +9,11 @@ import { createHub } from './hub';
 
 const config: Config = {
   port: 0,
-  webOrigins: ['http://localhost:4200'],
+  webOrigins: ['http://localhost:5100'],
   token: 'secret',
   home: '/nonexistent-pm-home',
 };
-const origin = 'http://localhost:4200';
+const origin = 'http://localhost:5100';
 
 const open = (url: string, headers?: Record<string, string>) =>
   new Promise<WebSocket>((resolve, reject) => {

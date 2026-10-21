@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.302",
+  "startedAt": "2026-01-02T10:00:00.000Z",
+  "durationSeconds": 30,
+  "costUsd": 0.2,
+  "partial": true,
+  "partialReason": "cost_ceiling",
+  "suite": {
+    "root": ".",
+    "ablation": "none",
+    "modelOverride": null,
+    "caseFilter": null,
+    "threshold": 1,
+    "concurrency": 1,
+    "plugins": [
+      {
+        "name": "p",
+        "version": "0.1.0",
+        "path": "."
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "cheap",
+      "dir": "evals/cases/cheap",
+      "source": "prompt.md",
+      "promptMarkdown": "Do the thing",
+      "runsPerCase": 1,
+      "timeoutSeconds": 300,
+      "maxTurns": 10,
+      "graders": [
+        {
+          "name": "g1",
+          "type": "regex",
+          "weight": 1,
+          "graderMarkdown": "---\ntype: regex\n---",
+          "config": {}
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 0.5,
+            "passed": false,
+            "turns": 3,
+            "costUsd": 0.1,
+            "judgeCostUsd": 0.01,
+            "durationSeconds": 12.5,
+            "startedAt": "2026-01-01T10:00:00.000Z",
+            "error": null,
+            "tracePath": "/tmp/x/trace.jsonl",
+            "skippedPaidGraders": true,
+            "graders": [
+              {
+                "name": "g1",
+                "passed": false,
+                "weight": 1,
+                "explanation": "missing",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ],
+        "without": []
+      },
+      "aggregates": {
+        "score": 0.5,
+        "passRate": 0
+      }
+    },
+    {
+      "name": "boom",
+      "dir": "evals/cases/boom",
+      "source": "prompt.md",
+      "promptMarkdown": "Do the thing",
+      "runsPerCase": 1,
+      "timeoutSeconds": 300,
+      "maxTurns": 10,
+      "graders": [
+        {
+          "name": "g1",
+          "type": "regex",
+          "weight": 1,
+          "graderMarkdown": "---\ntype: regex\n---",
+          "config": {}
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 0,
+            "passed": false,
+            "turns": 3,
+            "costUsd": 0.1,
+            "judgeCostUsd": 0.01,
+            "durationSeconds": 12.5,
+            "startedAt": "2026-01-01T10:00:00.000Z",
+            "error": "timeout after 300s",
+            "tracePath": "/tmp/x/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": []
+          }
+        ],
+        "without": []
+      },
+      "aggregates": {
+        "score": 0,
+        "passRate": 0
+      }
+    }
+  ],
+  "aggregates": {
+    "casesTotal": 2,
+    "casesPassed": 0,
+    "overallScore": 1,
+    "overallPassRate": 1
+  }
+}

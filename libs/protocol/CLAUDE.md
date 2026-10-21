@@ -1,0 +1,8 @@
+# CLAUDE.md (libs/protocol)
+
+Notes moved out of the root CLAUDE.md.
+
+- `libs/protocol`: `@pm/protocol`, zod schemas and types shared by web and server. REST DTOs are in `lib/rest.ts`, WS messages in `lib/ws.ts` (`ClientMessageSchema` is validated by the hub; `ServerMessage` is a plain type). New WS message types go there (source-only package, consumed via the pnpm workspace symlink and bundled by esbuild).
+- Skills (protocol): `skill-blocks.ts` is a lossless SKILL.md model (remark only locates nodes, every op splices slices of the original text; ids are index paths and shift after each op, so re-parse; only top-level headings split sections) and `skill-lint.ts` `lintSkill` checks frontmatter, limits and links.
+- Versions (`lib/versions.ts`): `PmMetaSchema` (zod, the runner's `pm-meta.json` sidecar) and plain response types of `GET …/versions`, `/compare`, `/gate` (`CaseSide` carries `runId`, `arm`, `n` for the trace dialog; `GateRule` ids `no-regression`/`ctx-not-grown`/`holdout-pass`).
+- Experiments, description kind: `Experiment.kind` (absent = `hypothesis`, old records parse), `skill`, `iterations`, `trainCases`/`holdoutCases`, `candidates[{text, train, holdout, costUsd, proposeRunId, evalRunId}]` (first = original), `descriptionResult {bestIndex, verdict pass|fail|unknown, warning}`; `RunExperimentSchema` takes `kind`, `skill` (required for description), `iterations`; `LOOP_STAGES` has `propose`; `splitTriggerCases`, `DescriptionProposalSchema`, `MAX_DESCRIPTION`. `skill-blocks.ts` `setDescription(text, description)`: lossless one-line rewrite of the frontmatter description (throws if other keys would change), `UNSAFE_DESCRIPTION`.

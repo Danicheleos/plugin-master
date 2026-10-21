@@ -1,18 +1,19 @@
 import { ActionIcon, Group, NavLink, Text, Tooltip } from '@mantine/core';
-import type { FileNode } from '@pm/protocol';
 import { ContextToggle } from '../context/ContextToggle';
-import { useTree } from './hooks';
+import { useDir } from './hooks';
 import styles from './files.module.scss';
 
 type Props = {
   spaceId: string;
   selected: string | null;
   onSelect: (path: string) => void;
+  /** expanded directories; their listings are loaded and watched */
+  expanded: ReadonlySet<string>;
+  onToggle: (dir: string) => void;
   onNew: () => void;
 };
 
-export function FileTree({ spaceId, selected, onSelect, onNew }: Props) {
-  const { data, error } = useTree(spaceId);
+export function FileTree({ onNew, ...rest }: Props) {
   return (
     <nav className={styles.tree}>
       <Group justify="space-between" mb="xs">
@@ -28,54 +29,51 @@ export function FileTree({ spaceId, selected, onSelect, onNew }: Props) {
           </ActionIcon>
         </Tooltip>
       </Group>
-      {error && (
-        <Text c="red" size="sm">
-          {error.message}
-        </Text>
-      )}
-      <Nodes
-        spaceId={spaceId}
-        nodes={data ?? []}
-        selected={selected}
-        onSelect={onSelect}
-      />
+      <Nodes dir="" {...rest} />
     </nav>
   );
 }
 
-type NodesProps = Pick<Props, 'spaceId' | 'selected' | 'onSelect'> & {
-  nodes: FileNode[];
-};
+type NodesProps = Omit<Props, 'onNew'> & { dir: string };
 
-function Nodes({ spaceId, nodes, selected, onSelect }: NodesProps) {
-  return nodes.map((n) =>
-    n.type === 'dir' ? (
+function Nodes({ dir, ...props }: NodesProps) {
+  const { spaceId, selected, onSelect, expanded, onToggle } = props;
+  const { data, error } = useDir(spaceId, dir);
+  if (error)
+    return (
+      <Text c="red" size="sm">
+        {error.message}
+      </Text>
+    );
+  return (data ?? []).map((n) => {
+    if (n.type === 'file')
+      return (
+        <Group key={n.path} gap={0} wrap="nowrap">
+          <NavLink
+            component="button"
+            flex={1}
+            py={2}
+            label={n.name}
+            active={n.path === selected}
+            onClick={() => onSelect(n.path)}
+          />
+          <ContextToggle spaceId={spaceId} path={n.path} />
+        </Group>
+      );
+    const open = expanded.has(n.path);
+    return (
       <NavLink
         component="button"
         key={n.path}
         label={n.name}
+        leftSection={open ? '▾' : '▸'}
         py={2}
         childrenOffset={12}
+        opened={open}
+        onClick={() => onToggle(n.path)}
       >
-        <Nodes
-          spaceId={spaceId}
-          nodes={n.children ?? []}
-          selected={selected}
-          onSelect={onSelect}
-        />
+        {open && <Nodes dir={n.path} {...props} />}
       </NavLink>
-    ) : (
-      <Group key={n.path} gap={0} wrap="nowrap">
-        <NavLink
-          component="button"
-          flex={1}
-          py={2}
-          label={n.name}
-          active={n.path === selected}
-          onClick={() => onSelect(n.path)}
-        />
-        <ContextToggle spaceId={spaceId} path={n.path} />
-      </Group>
-    ),
-  );
+    );
+  });
 }

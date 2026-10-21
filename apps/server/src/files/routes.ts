@@ -1,5 +1,6 @@
 import { FileContentSchema } from '@pm/protocol';
 import type { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
 import type { Registry } from '../spaces/registry';
 import { create, read, tree, write } from './service';
 
@@ -12,7 +13,10 @@ export const filesRoutes =
     const rootOf = async (id: string) => (await registry.get(id)).path;
 
     app.get<Req>('/spaces/:id/tree', async (req) =>
-      tree(await rootOf(req.params.id)),
+      tree(
+        await rootOf(req.params.id),
+        z.object({ dir: z.string().default('') }).parse(req.query).dir,
+      ),
     );
 
     app.get<Req>('/spaces/:id/file', async (req) =>

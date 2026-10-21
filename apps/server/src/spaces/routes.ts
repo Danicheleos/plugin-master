@@ -1,7 +1,7 @@
 import {
   CreateSpaceSchema,
   OpenSpaceSchema,
-  SpaceConfigSchema,
+  SpaceConfigInputSchema,
 } from '@pm/protocol';
 import type { FastifyPluginAsync } from 'fastify';
 import type { SpacesService } from './service';
@@ -33,6 +33,6 @@ export const spacesRoutes =
     );
 
     app.put<{ Params: { id: string } }>('/spaces/:id/config', (req) =>
-      service.setConfig(req.params.id, SpaceConfigSchema.parse(req.body)),
+      service.setConfig(req.params.id, SpaceConfigInputSchema.parse(req.body)),
     );
   };

@@ -17,6 +17,7 @@
             "cjs"
           ],
           "bundle": true,
+          "excludeFromExternal": ["unified", "remark-parse", "remark-frontmatter"],
           "main": "apps/server/src/main.ts",
           "tsConfig": "apps/server/tsconfig.app.json",
           "esbuildOptions": {
@@ -101,6 +102,10 @@
           },
           "production": {
             "buildTarget": "server:build:production"
+          },
+          "self": {
+            "buildTarget": "server:build:development",
+            "watch": false
           }
         }
       }
@@ -112,6 +117,8 @@
     "@pm/protocol": "workspace:*",
     "chokidar": "^4.0.3",
     "fastify": "~5.2.1",
+    "simple-git": "^4.0.2",
+    "yaml": "^2.9.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {

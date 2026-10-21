@@ -1,0 +1,32 @@
+.root {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.node {
+  width: 200px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--mantine-color-text);
+  background: var(--mantine-color-body);
+  border: 1px solid var(--mantine-color-default-border);
+  border-left-width: 4px;
+  border-radius: var(--mantine-radius-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.manifest { border-left-color: var(--mantine-color-gray-6); }
+.skill { border-left-color: var(--mantine-color-blue-6); }
+.agent { border-left-color: var(--mantine-color-violet-6); }
+.command { border-left-color: var(--mantine-color-cyan-6); }
+.hook { border-left-color: var(--mantine-color-orange-6); }
+.script { border-left-color: var(--mantine-color-teal-6); }
+.mcp { border-left-color: var(--mantine-color-grape-6); }
+.case { border-left-color: var(--mantine-color-green-6); }

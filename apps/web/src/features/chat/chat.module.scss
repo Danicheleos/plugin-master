@@ -25,3 +25,8 @@
   font-size: var(--mantine-font-size-sm);
   overflow-wrap: anywhere;
 }
+
+.tools {
+  padding-left: var(--mantine-spacing-sm);
+  border-left: 1px solid var(--mantine-color-default-border);
+}

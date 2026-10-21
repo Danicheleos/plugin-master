@@ -1,4 +1,5 @@
 import { Button, Code, Group, Modal } from '@mantine/core';
+import Markdown from 'react-markdown';
 import type { ServerMessage } from '@pm/protocol';
 
 type Props = {
@@ -7,6 +8,7 @@ type Props = {
 };
 
 export function PermissionPrompt({ request, onReply }: Props) {
+  const plan = (request.input as { plan?: unknown } | null)?.plan;
   return (
     <Modal
       opened
@@ -17,9 +19,19 @@ export function PermissionPrompt({ request, onReply }: Props) {
       closeOnClickOutside={false}
       closeOnEscape={false}
     >
-      <Code block fz="xs" mah="40vh" data-autofocus tabIndex={-1}>
-        {JSON.stringify(request.input, null, 2)}
-      </Code>
+      {request.toolName === 'ExitPlanMode' && typeof plan === 'string' ? (
+        <div
+          style={{ maxHeight: '50vh', overflow: 'auto' }}
+          data-autofocus
+          tabIndex={-1}
+        >
+          <Markdown>{plan}</Markdown>
+        </div>
+      ) : (
+        <Code block fz="xs" mah="40vh" data-autofocus tabIndex={-1}>
+          {JSON.stringify(request.input, null, 2)}
+        </Code>
+      )}
       <Group justify="flex-end" mt="md">
         <Button variant="default" onClick={() => onReply(false)}>
           Deny

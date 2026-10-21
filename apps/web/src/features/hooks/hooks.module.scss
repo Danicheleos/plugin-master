@@ -1,0 +1,16 @@
+.cell {
+  display: block;
+  width: 100%;
+  padding: var(--mantine-spacing-xs);
+  text-align: center;
+}
+
+.empty {
+  opacity: 0.35;
+}
+
+.filled {
+  font-weight: 600;
+  background: var(--mantine-primary-color-light);
+  color: var(--mantine-primary-color-light-color);
+}

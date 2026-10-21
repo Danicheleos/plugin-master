@@ -6,6 +6,7 @@ type Listener = (msg: ServerMessage) => void;
 
 const listeners = new Set<Listener>();
 const subscribed = new Set<string>(); // re-sent after every reconnect
+const watching = new Map<string, string>(); // fs.watch per space, replayed after subscribe
 const queued: string[] = []; // non-subscribe messages sent while offline
 let socket: WebSocket | undefined;
 
@@ -20,6 +21,7 @@ function connect(): void {
     for (const m of queued.splice(0)) ws.send(m);
     for (const spaceId of subscribed)
       ws.send(JSON.stringify({ type: 'subscribe', spaceId }));
+    for (const m of watching.values()) ws.send(m);
   };
   ws.onmessage = (e) => {
     const msg = JSON.parse(String(e.data)) as ServerMessage;
@@ -31,20 +33,28 @@ function connect(): void {
   };
 }
 
-/** Sends a message; `subscribe` is remembered (until `unsubscribe`) and replayed on reconnect. Other messages are queued while offline and flushed on connect. */
+/** Sends a message; `subscribe` and `fs.watch` are remembered (until `unsubscribe`) and replayed on reconnect. Other messages are queued while offline and flushed on connect. */
 export function send(msg: ClientMessage): void {
   if (!socket) connect();
   if (msg.type === 'subscribe') subscribed.add(msg.spaceId);
-  if (msg.type === 'unsubscribe') subscribed.delete(msg.spaceId);
+  if (msg.type === 'unsubscribe') {
+    subscribed.delete(msg.spaceId);
+    watching.delete(msg.spaceId);
+  }
   const data = JSON.stringify(msg);
+  // remembered messages are replayed on connect, so they are never queued
+  if (msg.type === 'fs.watch') watching.set(msg.spaceId, data);
+  const replayed =
+    msg.type === 'subscribe' ||
+    msg.type === 'unsubscribe' ||
+    msg.type === 'fs.watch';
   if (socket?.readyState === WebSocket.OPEN) socket.send(data);
-  else if (msg.type !== 'subscribe' && msg.type !== 'unsubscribe')
-    queued.push(data);
+  else if (!replayed) queued.push(data);
 }
 
 const refs = new Map<string, number>(); // listeners per space
 
-export function subscribe(listener: Listener): () => void {
+function subscribe(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }

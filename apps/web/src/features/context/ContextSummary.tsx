@@ -49,16 +49,16 @@ export function ContextSummary({
                   {' '}
                   <Text span c="orange" inherit>
                     (file not found)
-                  </Text>{' '}
-                  <Button
-                    variant="default"
-                    size="compact-xs"
-                    onClick={() => toggle(p)}
-                  >
-                    Unpin
-                  </Button>
+                  </Text>
                 </>
-              )}
+              )}{' '}
+              <Button
+                variant="default"
+                size="compact-xs"
+                onClick={() => toggle(p)}
+              >
+                Unpin
+              </Button>
             </li>
           ))}
         </ul>

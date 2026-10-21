@@ -19,9 +19,10 @@ export function createPermissions(
     toolName: string,
     input: unknown,
     signal?: AbortSignal,
+    idPrefix = '',
   ): Promise<boolean> {
     return new Promise((resolve) => {
-      const requestId = randomUUID();
+      const requestId = idPrefix + randomUUID();
       const msg = {
         type: 'permission.request',
         spaceId,
@@ -33,6 +34,7 @@ export function createPermissions(
         pending.delete(requestId);
         resolve(allow);
       };
+      if (signal?.aborted) return resolve(false); // 'abort' would never fire
       pending.set(requestId, { spaceId, msg, resolve: settle });
       // an interrupted or closed session aborts the signal: drop the prompt
       signal?.addEventListener('abort', () => settle(false), { once: true });

@@ -59,6 +59,13 @@ describe('files routes', () => {
     expect(tree.json().map((n: { name: string }) => n.name)).toContain(
       'skills',
     );
+    const sub = await app.inject({
+      url: `/api/spaces/${id}/tree?dir=skills/foo`,
+      headers,
+    });
+    expect(sub.json()).toEqual([
+      { name: 'SKILL.md', path: 'skills/foo/SKILL.md', type: 'file' },
+    ]);
   });
 
   it('rejects ../ with 400 PATH_OUTSIDE_SPACE', async () => {

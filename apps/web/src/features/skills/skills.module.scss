@@ -1,0 +1,19 @@
+.row {
+  padding-block: 2px;
+  padding-right: var(--mantine-spacing-xs);
+  border-bottom: 1px solid var(--mantine-color-default-border);
+
+  &:hover {
+    background: var(--mantine-color-default-hover);
+  }
+}
+
+.edit {
+  padding: var(--mantine-spacing-xs);
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}

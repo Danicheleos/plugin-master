@@ -14,7 +14,7 @@ const queryClient = new QueryClient({
   },
 });
 
-export function App() {
+function App() {
   return (
     <MantineProvider defaultColorScheme="auto">
       {getToken() ? (

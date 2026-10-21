@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import {
   Alert,
   Button,
@@ -11,6 +11,7 @@ import MonacoEditor from '@monaco-editor/react';
 import { ApiError } from '../../api/http';
 import { useQueryClient } from '@tanstack/react-query';
 import { fileKey, useCreateFile, useFile, useSaveFile } from './hooks';
+import { useDraft } from './useDraft';
 import styles from './files.module.scss';
 
 const LANGUAGES: Record<string, string> = {
@@ -54,47 +55,29 @@ export function FileEditor({ spaceId, path }: Props) {
   return <Loader m="md" size="sm" />;
 }
 
-/** `disk` is the latest server content; `base` is the last disk content the editor has accepted. */
+/** `disk` is the latest server content; the draft tracks the last disk content the editor accepted. */
 function Editor({
   spaceId,
   path,
   disk,
   gone,
 }: Props & { disk: string; gone: boolean }) {
-  const [value, setValue] = useState(disk);
-  const [base, setBase] = useState(disk);
-  const [seenDisk, setSeenDisk] = useState(disk);
-  const [conflict, setConflict] = useState(false);
+  const draft = useDraft(disk);
   // a file deleted on disk is saved by creating it again
   const save = useSaveFile(spaceId);
   const create = useCreateFile(spaceId);
   const writer = gone ? create : save;
   const qc = useQueryClient();
-  const dirty = value !== base;
   const scheme = useComputedColorScheme('light');
-
-  // External change: reload silently when clean, otherwise ask.
-  if (disk !== seenDisk) {
-    setSeenDisk(disk);
-    if (disk !== base) {
-      if (dirty) setConflict(true);
-      else {
-        setValue(disk);
-        setBase(disk);
-      }
-    }
-  }
 
   const saveNow = () =>
     writer.mutate(
-      { path, content: value },
+      { path, content: draft.value },
       {
         onSuccess: () => {
           // state first, then cache: the cache update re-renders with disk === value
-          setBase(value);
-          setSeenDisk(value);
-          setConflict(false);
-          qc.setQueryData(fileKey(spaceId, path), { path, content: value });
+          draft.saved(draft.value);
+          qc.setQueryData(fileKey(spaceId, path), { path, content: draft.value });
         },
       },
     );
@@ -106,11 +89,11 @@ function Editor({
       <Group className={styles.header} justify="space-between" px="md" py={6}>
         <span>
           {path}
-          {dirty && ' ●'}
+          {draft.dirty && ' ●'}
         </span>
         <Button
           size="compact-sm"
-          disabled={!dirty || writer.isPending}
+          disabled={!draft.dirty || writer.isPending}
           onClick={saveNow}
         >
           Save
@@ -126,28 +109,21 @@ function Editor({
           File deleted on disk
         </Alert>
       )}
-      {conflict && (
+      {draft.conflict && (
         <Alert color="yellow" radius={0}>
           <Group>
             <span>File changed on disk</span>
             <Button
               size="compact-sm"
               variant="default"
-              onClick={() => {
-                setValue(disk);
-                setBase(disk);
-                setConflict(false);
-              }}
+              onClick={draft.reload}
             >
               Reload
             </Button>
             <Button
               size="compact-sm"
               variant="default"
-              onClick={() => {
-                setBase(disk);
-                setConflict(false);
-              }}
+              onClick={draft.accept}
             >
               Keep my edits
             </Button>
@@ -158,8 +134,8 @@ function Editor({
         path={path}
         theme={scheme === 'dark' ? 'vs-dark' : 'vs'}
         language={languageOf(path)}
-        value={value}
-        onChange={(v) => setValue(v ?? '')}
+        value={draft.value}
+        onChange={(v) => draft.setValue(v ?? '')}
         onMount={(editor, monaco) =>
           editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () =>
             saveRef.current(),

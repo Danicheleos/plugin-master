@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { scaffold } from './scaffold';
+import { ensurePluginMaster, scaffold } from './scaffold';
 
 let dir: string;
 
@@ -39,6 +39,23 @@ describe('scaffold', () => {
     await scaffold(dir, { name: 'a', description: '' });
     expect(await readFile(join(dir, '.plugin-master/IDEA.md'), 'utf8')).toBe(
       'mine',
+    );
+  });
+
+  it('adds .plugin-master to .gitignore once, keeping existing lines', async () => {
+    await writeFile(join(dir, '.gitignore'), 'node_modules');
+    await ensurePluginMaster(dir);
+    await ensurePluginMaster(dir);
+    expect(await readFile(join(dir, '.gitignore'), 'utf8')).toBe(
+      'node_modules\n.plugin-master\n',
+    );
+  });
+
+  it('does not duplicate an existing .plugin-master/ entry', async () => {
+    await writeFile(join(dir, '.gitignore'), '.plugin-master/\n');
+    await scaffold(dir, { name: 'p', description: 'd' });
+    expect(await readFile(join(dir, '.gitignore'), 'utf8')).toBe(
+      '.plugin-master/\n',
     );
   });
 });

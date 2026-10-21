@@ -11,12 +11,11 @@ export class ApiError extends Error {
   }
 }
 
-export async function request<T>(
+async function call(
   method: string,
   url: string,
   body?: unknown,
-  schema?: ZodType<T>,
-): Promise<T> {
+): Promise<Response> {
   const res = await fetch(url, {
     method,
     headers: {
@@ -39,7 +38,21 @@ export async function request<T>(
       res.status,
     );
   }
-  const text = await res.text();
+  return res;
+}
+
+/** GET a text body (e.g. an HTML report) with the same auth and error handling. */
+export async function requestText(url: string): Promise<string> {
+  return (await call('GET', url)).text();
+}
+
+export async function request<T>(
+  method: string,
+  url: string,
+  body?: unknown,
+  schema?: ZodType<T>,
+): Promise<T> {
+  const text = await (await call(method, url, body)).text();
   if (!text) return undefined as T;
   const data: unknown = JSON.parse(text);
   return schema ? schema.parse(data) : (data as T);

@@ -8,32 +8,32 @@ export const IGNORED = ['.git', 'node_modules', '.DS_Store'];
 
 const notFound = () => new AppError('FILE_NOT_FOUND', 'File not found', 404);
 
-export async function tree(root: string, dir = root): Promise<FileNode[]> {
-  const entries = await readdir(dir, { withFileTypes: true });
+/** One directory level (`dir` relative to the root, '' = root); subdirectories are loaded on demand. */
+export async function tree(root: string, dir = ''): Promise<FileNode[]> {
+  const absDir = resolveInSpace(root, dir);
+  const entries = await readdir(absDir, { withFileTypes: true }).catch(
+    (e: unknown) => {
+      const code = (e as NodeJS.ErrnoException).code;
+      throw code === 'ENOENT' || code === 'ENOTDIR' ? notFound() : e;
+    },
+  );
   const nodes = await Promise.all(
     entries
       .filter((e) => !IGNORED.includes(e.name))
       .map(async (e): Promise<FileNode | undefined> => {
-        const abs = join(dir, e.name);
+        const abs = join(absDir, e.name);
         const path = relative(root, abs).split(sep).join('/');
         if (e.isSymbolicLink()) {
-          // shown only if it stays inside the space and resolves; never followed (no cycles)
+          // shown only if it stays inside the space and resolves
           try {
             resolveInSpace(root, path);
             const isDir = (await stat(abs)).isDirectory();
-            return {
-              name: e.name,
-              path,
-              type: isDir ? 'dir' : 'file',
-              ...(isDir && { children: [] }),
-            };
+            return { name: e.name, path, type: isDir ? 'dir' : 'file' };
           } catch {
             return undefined;
           }
         }
-        return e.isDirectory()
-          ? { name: e.name, path, type: 'dir', children: await tree(root, abs) }
-          : { name: e.name, path, type: 'file' };
+        return { name: e.name, path, type: e.isDirectory() ? 'dir' : 'file' };
       }),
   );
   return nodes

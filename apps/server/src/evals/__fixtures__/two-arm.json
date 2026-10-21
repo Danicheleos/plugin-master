@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.302",
+  "startedAt": "2026-01-01T10:00:00.000Z",
+  "durationSeconds": 30,
+  "costUsd": 0.2,
+  "partial": false,
+  "partialReason": null,
+  "suite": {
+    "root": ".",
+    "ablation": "with-without",
+    "modelOverride": null,
+    "caseFilter": null,
+    "threshold": 1,
+    "concurrency": 1,
+    "plugins": [
+      {
+        "name": "p",
+        "version": "0.1.0",
+        "path": "."
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "delta",
+      "dir": "evals/cases/delta",
+      "source": "prompt.md",
+      "promptMarkdown": "Do the thing",
+      "runsPerCase": 1,
+      "timeoutSeconds": 300,
+      "maxTurns": 10,
+      "graders": [
+        {
+          "name": "g1",
+          "type": "regex",
+          "weight": 1,
+          "graderMarkdown": "---\ntype: regex\n---",
+          "config": {}
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 3,
+            "costUsd": 0.1,
+            "judgeCostUsd": 0.01,
+            "durationSeconds": 12.5,
+            "startedAt": "2026-01-01T10:00:00.000Z",
+            "error": null,
+            "tracePath": "/tmp/x/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "g1",
+                "passed": true,
+                "weight": 1,
+                "explanation": "ok",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ],
+        "without": [
+          {
+            "score": 0.5,
+            "passed": false,
+            "turns": 3,
+            "costUsd": 0.1,
+            "judgeCostUsd": 0.01,
+            "durationSeconds": 12.5,
+            "startedAt": "2026-01-01T10:00:00.000Z",
+            "error": null,
+            "tracePath": "/tmp/x/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "g1",
+                "passed": false,
+                "weight": 1,
+                "explanation": "missing",
+                "withOnly": true,
+                "scored": false,
+                "evidence": "line 1\n\nline 2",
+                "judgeVotes": [
+                  true,
+                  false
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1,
+        "scoreWithout": 0.5,
+        "passRateWithout": 0,
+        "delta": 0.5
+      }
+    }
+  ],
+  "aggregates": {
+    "casesTotal": 1,
+    "casesPassed": 1,
+    "overallScore": 1,
+    "overallPassRate": 1
+  }
+}

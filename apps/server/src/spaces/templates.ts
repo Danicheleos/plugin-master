@@ -7,7 +7,7 @@ export function pluginFiles(
     '.claude-plugin/plugin.json':
       JSON.stringify({ name, version: '0.1.0', description }, null, 2) + '\n',
     'skills/.gitkeep': '',
-    'CLAUDE.md': 'Before working, read .plugin-master/IDEA.md and STATE.md\n',
+    'CLAUDE.md': '',
   };
 }
 

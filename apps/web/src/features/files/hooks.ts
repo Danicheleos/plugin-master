@@ -7,6 +7,7 @@ import {
 import { z } from 'zod';
 import { request } from '../../api/http';
 
+/** Prefix of every loaded directory listing of the space. */
 export const treeKey = (spaceId: string) => ['tree', spaceId];
 export const fileKey = (spaceId: string, path: string) => [
   'file',
@@ -14,13 +15,14 @@ export const fileKey = (spaceId: string, path: string) => [
   path,
 ];
 
-export const useTree = (spaceId: string) =>
+/** One directory level (`dir` = '' for the root); loaded only while the directory is shown. */
+export const useDir = (spaceId: string, dir: string) =>
   useQuery({
-    queryKey: treeKey(spaceId),
+    queryKey: [...treeKey(spaceId), dir],
     queryFn: () =>
       request(
         'GET',
-        `/api/spaces/${spaceId}/tree`,
+        `/api/spaces/${spaceId}/tree?dir=${encodeURIComponent(dir)}`,
         undefined,
         z.array(FileNodeSchema),
       ),

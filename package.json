@@ -4,7 +4,10 @@
   "license": "MIT",
   "scripts": {
     "dev": "nx run-many -t serve -p server web",
-    "check": "nx run-many -t lint typecheck test"
+    "dev:lan": "PM_LAN=1 nx run-many -t serve -p server web",
+    "dev:self": "nx run-many -t serve -p server web -c self",
+    "dev:self:lan": "PM_LAN=1 nx run-many -t serve -p server web -c self",
+    "check": "nx run-many -t lint typecheck test && nx build web"
   },
   "private": true,
   "dependencies": {
@@ -17,11 +20,9 @@
     "@nx/eslint": "23.2.0",
     "@nx/eslint-plugin": "23.2.0",
     "@nx/js": "23.2.0",
-    "@nx/node": "23.2.0",
     "@nx/react": "23.2.0",
     "@nx/vite": "23.2.0",
     "@nx/vitest": "23.2.0",
-    "@nx/web": "23.2.0",
     "@swc-node/register": "1.11.1",
     "@swc/cli": "~0.8.1",
     "@swc/core": "1.15.8",

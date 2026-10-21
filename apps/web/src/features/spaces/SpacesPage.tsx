@@ -12,6 +12,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { OpenTraceFile } from '../runs/OpenTraceFile';
 import { ColorSchemeToggle } from '../theme/ColorSchemeToggle';
 import { CreateSpaceDialog } from './CreateSpaceDialog';
 import { useRemoveSpace, useSpaces } from './hooks';
@@ -43,6 +44,7 @@ export function SpacesPage() {
             >
               Open folder
             </Button>
+            <OpenTraceFile />
             <ColorSchemeToggle />
           </Group>
         </Group>

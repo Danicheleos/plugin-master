@@ -11,28 +11,29 @@ beforeEach(async () => {
 afterEach(() => rm(root, { recursive: true, force: true }));
 
 describe('files service', () => {
-  it('tree ignores .git/node_modules, puts dirs first and uses relative paths', async () => {
+  it('tree lists one level, ignores .git/node_modules, puts dirs first', async () => {
     await mkdir(join(root, 'b/sub'), { recursive: true });
     await mkdir(join(root, '.git'));
     await mkdir(join(root, 'node_modules'));
     await writeFile(join(root, 'a.md'), '');
     await writeFile(join(root, 'b/sub/c.md'), '');
     expect(await tree(root)).toEqual([
-      {
-        name: 'b',
-        path: 'b',
-        type: 'dir',
-        children: [
-          {
-            name: 'sub',
-            path: 'b/sub',
-            type: 'dir',
-            children: [{ name: 'c.md', path: 'b/sub/c.md', type: 'file' }],
-          },
-        ],
-      },
+      { name: 'b', path: 'b', type: 'dir' },
       { name: 'a.md', path: 'a.md', type: 'file' },
     ]);
+    expect(await tree(root, 'b')).toEqual([
+      { name: 'sub', path: 'b/sub', type: 'dir' },
+    ]);
+    expect(await tree(root, 'b/sub')).toEqual([
+      { name: 'c.md', path: 'b/sub/c.md', type: 'file' },
+    ]);
+  });
+
+  it('tree rejects dirs outside the space and missing dirs', async () => {
+    await expect(tree(root, '../x')).rejects.toMatchObject({
+      code: 'PATH_OUTSIDE_SPACE',
+    });
+    await expect(tree(root, 'nope')).rejects.toMatchObject({ status: 404 });
   });
 
   it('create makes parent dirs and refuses to overwrite', async () => {

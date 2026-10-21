@@ -1,0 +1,36 @@
+.dashboard {
+  height: 100%;
+  overflow: auto;
+  // expanding a widget can add a vertical scrollbar; without a reserved gutter the grid width
+  // (and so every widget's x and width) would change by the scrollbar width
+  scrollbar-gutter: stable;
+}
+
+.widget {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--mantine-color-body);
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+}
+
+.header {
+  padding: 2px var(--mantine-spacing-xs);
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+.title {
+  cursor: grab;
+  user-select: none;
+
+  &[data-pinned] {
+    cursor: default;
+  }
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}

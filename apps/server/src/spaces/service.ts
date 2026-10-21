@@ -1,20 +1,20 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat } from 'node:fs/promises';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import {
-  SpaceConfigSchema,
   type CreateSpace,
   type OpenSpace,
   type Space,
   type SpaceConfig,
+  type SpaceConfigInput,
 } from '@pm/protocol';
 import { resolveInSpace } from '../files/safe-path';
 import { AppError } from '../lib/errors';
 import type { Registry } from './registry';
+import { readConfig, withLock, writeConfig } from './config-file';
 import { ensurePluginMaster, scaffold } from './scaffold';
 
 const PLUGIN_JSON = '.claude-plugin/plugin.json';
-const CONFIG_JSON = '.plugin-master/config.json';
 
 function requireAbsolute(path: string): string {
   if (!isAbsolute(path))
@@ -85,21 +85,13 @@ export function createSpacesService(registry: Registry) {
     remove: (id: string) => registry.remove(id),
 
     async getConfig(id: string): Promise<SpaceConfig> {
-      const { path } = await registry.get(id);
-      let raw: string;
-      try {
-        raw = await readFile(join(path, CONFIG_JSON), 'utf8');
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code === 'ENOENT')
-          return { masterContext: [] };
-        throw e;
-      }
-      return SpaceConfigSchema.parse(JSON.parse(raw));
+      return readConfig((await registry.get(id)).path);
     },
 
-    async setConfig(id: string, config: SpaceConfig): Promise<SpaceConfig> {
+    /** Replaces masterContext; `activePlan` is kept (it changes through the plans API). */
+    async setConfig(id: string, input: SpaceConfigInput): Promise<SpaceConfig> {
       const { path } = await registry.get(id);
-      for (const entry of config.masterContext) {
+      for (const entry of input.masterContext) {
         try {
           resolveInSpace(path, entry);
         } catch {
@@ -110,11 +102,11 @@ export function createSpacesService(registry: Registry) {
           );
         }
       }
-      await writeFile(
-        join(path, CONFIG_JSON),
-        JSON.stringify(config, null, 2) + '\n',
-      );
-      return config;
+      return withLock(path, async () => {
+        const config = { ...(await readConfig(path)), ...input };
+        await writeConfig(path, config);
+        return config;
+      });
     },
   };
 }
