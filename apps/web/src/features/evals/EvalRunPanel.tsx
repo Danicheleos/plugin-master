@@ -27,6 +27,7 @@ import {
   useEvalSuite,
 } from './hooks';
 import { EvalProgressView } from './EvalProgressView';
+import { ExternalSeriesView } from './ExternalSeriesView';
 import { useEvalPrefs } from './prefs';
 import { ScaffoldCheckbox, TrustCheckbox } from './Consent';
 import styles from './evals.module.scss';
@@ -58,7 +59,8 @@ export function EvalRunPanel({ spaceId, onDone, actions }: Props) {
   const pane = useRef<HTMLPreElement>(null);
   const running = status.state === 'running';
   const suite = useEvalSuite(spaceId).data;
-  const groups = useEvalRuns(spaceId).data?.groups;
+  const runs = useEvalRuns(spaceId).data;
+  const groups = runs?.groups;
   const models = [
     ...new Set([
       ...MODEL_ALIASES,
@@ -129,6 +131,9 @@ export function EvalRunPanel({ spaceId, onDone, actions }: Props) {
         )}
         {actions}
       </Group>
+      {runs?.external && (
+        <ExternalSeriesView spaceId={spaceId} series={runs.external} />
+      )}
       {status.progress && !hidden && (
         <EvalProgressView progress={status.progress} />
       )}

@@ -11,6 +11,7 @@ import { AppError } from '../lib/errors';
 import type { Registry } from '../spaces/registry';
 import { evalDir } from './eval-dir';
 import { exportCase } from './export';
+import { readExternalSeries } from './external';
 import type { EvalRunner } from './runner';
 import { readSuite } from './suite';
 import { listTargets } from './targets';
@@ -31,7 +32,11 @@ export const evalsRoutes =
       '/spaces/:id/evals/runs',
       async (req): Promise<EvalRunsResponse> => {
         const root = await rootOf(req.params.id);
-        return { dir: await evalDir(root), groups: await listGroups(root) };
+        return {
+          dir: await evalDir(root),
+          groups: await listGroups(root),
+          external: await readExternalSeries(root),
+        };
       },
     );
 

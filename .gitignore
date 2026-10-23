@@ -10,3 +10,4 @@ out-tsc
 vitest.config.*.timestamp*
 vite.config.*.timestamp*
 .plugin-master
+.ambicode/

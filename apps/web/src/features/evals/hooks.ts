@@ -29,6 +29,7 @@ const runKey = (spaceId: string, runId: string) => [
 const idPath = (runId: string) =>
   runId.split('/').map(encodeURIComponent).join('/');
 
+const EXTERNAL_POLL_MS = 5000;
 export const evalRunsKey = (spaceId: string) => [...evalsKey(spaceId), 'runs'];
 export const fetchEvalRuns = (spaceId: string) =>
   request('GET', `/api/spaces/${spaceId}/evals/runs`, undefined, EvalRunsResponseSchema);
@@ -39,6 +40,8 @@ export const useEvalRuns = (spaceId: string, enabled = true) =>
     enabled,
     queryKey: evalRunsKey(spaceId),
     queryFn: () => fetchEvalRuns(spaceId),
+    // an external series has no WS event of its own: poll while one is live
+    refetchInterval: (q) => (q.state.data?.external ? EXTERNAL_POLL_MS : false),
   });
 
 export const useEvalSuites = (spaceId: string) =>

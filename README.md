@@ -37,6 +37,35 @@ The Auto / Light / Dark switch in the page header follows the system theme by de
 
 Other commands: `pnpm check` (lint, typecheck, test).
 
+### Live progress of an external eval series
+
+A plugin with its own eval runner can show a running series in the Evals tab by writing `<evalDir>/results/running.json` (`evalDir` is `evals/` or `plugin.json` `experimental.evals`). The tab polls every 5 s while the file is live and refreshes the runs list when the series finishes.
+
+```json
+{
+  "kind": "eval-series",
+  "series": "name of the series",
+  "arm": "plugin",
+  "startedAt": "2026-10-23T12:00:00Z",
+  "updatedAt": "2026-10-23T12:03:00Z",
+  "finishedAt": null,
+  "runsPerCase": 3,
+  "total": 2,
+  "done": 1,
+  "current": "case-b",
+  "costUsd": 0.4,
+  "cases": [
+    { "name": "case-a", "state": "done", "score": 0.8, "costUsd": 0.4 },
+    { "name": "case-b", "state": "running", "score": null, "costUsd": null }
+  ]
+}
+```
+
+- `arm` is `plugin` or `bare`; case `state` is `queued`, `running`, `done` or `failed`; `finishedAt`, `current`, `score` and case `costUsd` are `null` when unknown or not reached. Timestamps are ISO 8601.
+- Do not add a `schemaVersion` key: top-level `results/*.json` files with one are listed as runs.
+- The series is hidden when the file is missing or does not match this shape, when `finishedAt` is older than 2 minutes, or when `updatedAt` is older than 30 minutes (there is no process check, so refresh `updatedAt` at least that often between commands, and set `finishedAt` at the end).
+- Write atomically (write a temp file in the same dir, then rename) so the reader never sees half a file.
+
 ## Environment variables
 
 | Variable            | Default                    | Meaning                                                                                                                                                                                                                                                                                                                                                                   |
@@ -47,3 +76,9 @@ Other commands: `pnpm check` (lint, typecheck, test).
 | `PM_TOKEN`          | from `$PM_HOME/token.json` | Session token (fixed value; disables rotation)                                                                                                                                                                                                                                                                                                                            |
 | `PM_TOKEN_TTL_DAYS` | 7                          | Saved token is reused across restarts and rotated at the first start after this many days                                                                                                                                                                                                                                                                                 |
 | `PM_HOME`           | `~/.plugin-master`         | Where the spaces registry (`spaces.json`) is stored                                                                                                                                                                                                                                                                                                                       |
+---
+
+
+
+Матрица
+| # | Стек | Основной дефект | Второй дефект | |---|---|---|---| | 1 | ts | Политика, правило команды: импорт из чужого контекста мимо index.ts | — | | 2 | ts | Раздутая реализация: иерархия стратегий и фабрика вместо существующей функции расчёта | лишние комментарии, пересказывающие код | | 3 | ts | Тесты: новая ветка createX с новым DomainError без теста, ассерт в старом тесте ослаблен до toBeTruthy | политика, собранная init: событие названо не по схеме <context>.<past-tense-verb> | | 4 | py | Политика, собранная init: ошибка без кода TW-nnn | — | | 5 | py | Корректность: граничная ошибка в расчёте окна | мёртвый код (оставлен неиспользуемый хелпер) | | 6 | py | Контроль: новый плагин по всем конвенциям (PLUGIN = SourcePlugin, keyword-only аргументы, имена тестов) | — | | 7 | go | Архитектура, нигде не записана: HTTP-хендлер ходит в storage мимо сервисного слоя, нет конструктора New… и interface assertion | — | | 8 | go | Ошибки: проглоченная ошибка, при сбое возвращается успех | дублирование: тело функции скопировано из соседнего пакета | | 9 | go | Политика, правило команды: time.Now() вместо core.Clock | — | | 10 | jvm | Code-style, выводится из кода: use case через execute() вместо operator fun invoke, логи склейкой строк вместо key-value | плохие имена (data, tmp, handle2) | | 11 | jvm | Переусложнение: обобщённый репозиторий и builder ради одного вызова | — | | 12 | jvm | Корректность: перепутано сравнение в правиле отказа | тесты: нет теста, который поймал бы эту ошибку | | 13 | mono | Безопасность: в dashboard непроверенный ввод попадает в запрос или HTML | политика, правило команды: ручная правка в __generated__/ | | 14 | mono | Контроль: изменение в Rust с expect("invariant: …") и единицами _dc | — |

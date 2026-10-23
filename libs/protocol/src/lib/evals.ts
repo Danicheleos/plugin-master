@@ -146,11 +146,40 @@ export const EvalGroupSchema = z.object({
 });
 export type EvalGroup = z.infer<typeof EvalGroupSchema>;
 
+/**
+ * Live state of a series launched outside plugin-master, written by that tool to
+ * `<evalDir>/results/running.json` (no `schemaVersion`, so it is never listed as a run).
+ */
+export const ExternalSeriesSchema = z.object({
+  kind: z.literal('eval-series'),
+  series: z.string(),
+  arm: z.enum(['plugin', 'bare']),
+  startedAt: z.string(),
+  updatedAt: z.string(),
+  finishedAt: z.string().nullable(),
+  runsPerCase: z.number(),
+  total: z.number(),
+  done: z.number(),
+  current: z.string().nullable(),
+  costUsd: z.number(),
+  cases: z.array(
+    z.object({
+      name: z.string(),
+      state: z.enum(['queued', 'running', 'done', 'failed']),
+      score: z.number().nullable(),
+      costUsd: z.number().nullable(),
+    }),
+  ),
+});
+export type ExternalSeries = z.infer<typeof ExternalSeriesSchema>;
+
 export const EvalRunsResponseSchema = z.object({
   /** Eval dir relative to the space root (web watches `<dir>/results`). */
   dir: z.string(),
   /** Newest first. */
   groups: z.array(EvalGroupSchema),
+  /** A series running (or just finished) outside plugin-master; null/absent when none is live. */
+  external: ExternalSeriesSchema.nullable().optional(),
 });
 export type EvalRunsResponse = z.infer<typeof EvalRunsResponseSchema>;
 
