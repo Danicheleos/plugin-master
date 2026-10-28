@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -68,6 +68,7 @@ function Editor({
   const create = useCreateFile(spaceId);
   const writer = gone ? create : save;
   const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
   const scheme = useComputedColorScheme('light');
 
   const saveNow = () =>
@@ -77,6 +78,7 @@ function Editor({
         onSuccess: () => {
           // state first, then cache: the cache update re-renders with disk === value
           draft.saved(draft.value);
+          setEditing(false);
           qc.setQueryData(fileKey(spaceId, path), { path, content: draft.value });
         },
       },
@@ -91,13 +93,23 @@ function Editor({
           {path}
           {draft.dirty && ' ●'}
         </span>
-        <Button
-          size="compact-sm"
-          disabled={!draft.dirty || writer.isPending}
-          onClick={saveNow}
-        >
-          Save
-        </Button>
+        {editing && draft.dirty ? (
+          <Button size="compact-sm" disabled={writer.isPending} onClick={saveNow}>
+            Save
+          </Button>
+        ) : editing ? (
+          <Button
+            size="compact-sm"
+            variant="default"
+            onClick={() => setEditing(false)}
+          >
+            Close
+          </Button>
+        ) : (
+          <Button size="compact-sm" onClick={() => setEditing(true)}>
+            Edit
+          </Button>
+        )}
       </Group>
       {writer.error && (
         <Text c="red" px="md">
@@ -141,7 +153,10 @@ function Editor({
             saveRef.current(),
           )
         }
-        options={{ minimap: { enabled: false }, wordWrap: 'on' }}
+        options={{ minimap: { enabled: false }, wordWrap: 'on', readOnly: !editing,
+          // sets `readonly` on the input textarea, so focus does not open the touch keyboard
+          domReadOnly: !editing,
+        }}
       />
     </div>
   );

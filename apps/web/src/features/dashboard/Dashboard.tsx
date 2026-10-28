@@ -93,6 +93,9 @@ export function Dashboard({
   const { width, containerRef, mounted } = useContainerWidth();
   // pointer events, not click: on touch the drag handle swallows the synthesized click; a drag is not a tap
   const down = useRef<[number, number] | null>(null);
+  // the focused widget; a header tap collapses only a widget that was already focused (expanding always works)
+  const focused = useRef<string | null>(null);
+  const wasFocused = useRef(false);
   const items = all.filter((it) => widgetEnabled(it.type, features));
   // RGL's `static` makes an item an obstacle that others (and other statics) are pushed away from;
   // a pin only locks move/resize here, so pinned widgets may overlap and grow freely
@@ -120,10 +123,15 @@ export function Dashboard({
                 className={styles.widget}
                 style={it.z ? { zIndex: it.z } : undefined}
                 onPointerDownCapture={() => {
+                  wasFocused.current = focused.current === it.i;
+                  focused.current = it.i;
                   onRaise?.(it.i);
                   onActivate?.(it);
                 }}
-                onFocusCapture={() => onActivate?.(it)}
+                onFocusCapture={() => {
+                  focused.current = it.i;
+                  onActivate?.(it);
+                }}
               >
                 <Group
                   className={styles.header}
@@ -140,7 +148,8 @@ export function Dashboard({
                       Math.hypot(e.clientX - start[0], e.clientY - start[1]) > 4
                     )
                       return;
-                    onToggleCollapse(it.i);
+                    if (it.prevH !== undefined || wasFocused.current)
+                      onToggleCollapse(it.i);
                   }}
                 >
                   <Text

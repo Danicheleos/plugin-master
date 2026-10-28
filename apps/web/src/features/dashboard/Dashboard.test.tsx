@@ -66,7 +66,10 @@ describe('Dashboard', () => {
     expect(cb.onTogglePin).toHaveBeenCalledWith('chat');
     const title = screen.getByText('Agent chat');
     fireEvent.pointerDown(title, { clientX: 5, clientY: 5 });
-    fireEvent.pointerUp(title, { clientX: 5, clientY: 5 }); // a tap on the header collapses
+    fireEvent.pointerUp(title, { clientX: 5, clientY: 5 }); // first tap only focuses
+    expect(cb.onToggleCollapse).not.toHaveBeenCalled();
+    fireEvent.pointerDown(title, { clientX: 5, clientY: 5 });
+    fireEvent.pointerUp(title, { clientX: 5, clientY: 5 }); // a tap on the focused header collapses
     expect(cb.onToggleCollapse).toHaveBeenCalledWith('chat');
     expect(cb.onTogglePin).toHaveBeenCalledTimes(1); // a button click does not
     fireEvent.click(screen.getByLabelText('Duplicate Files'));
