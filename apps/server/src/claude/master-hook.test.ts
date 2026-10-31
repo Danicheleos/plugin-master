@@ -94,8 +94,30 @@ describe('masterPreToolUse', () => {
         run('Agent', { tool_input: { description: 'd', prompt: 'p', subagent_type, ...(model && { model }) } });
       expect(await typed('deep')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'ask' } });
       expect(await typed('fast')).toEqual({});
-      expect(await typed('unknown')).toEqual({});
+      expect(await typed('unknown')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'ask' } });
+      expect(await typed('unknown', 'haiku')).toEqual({}); // an explicit model wins
       expect(await typed('deep', 'haiku')).toEqual({}); // the call's own model wins
+    });
+
+    it('asks for model inherit, per call or by definition', async () => {
+      const a = createMasterPreToolUse({ ...agents, same: { description: 'd', prompt: 'p', model: 'inherit' } });
+      const call = (tool_input: object) =>
+        a({ hook_event_name: 'PreToolUse', session_id: 's', transcript_path: '', cwd: '/', tool_name: 'Agent', tool_input, tool_use_id: 't' } as HookInput, 't', { signal: new AbortController().signal });
+      expect(await call({ model: 'inherit' })).toMatchObject({ hookSpecificOutput: { permissionDecision: 'ask' } });
+      expect(await call({ subagent_type: 'same' })).toMatchObject({ hookSpecificOutput: { permissionDecision: 'ask' } });
+    });
+
+    it('asks for a subagent_type that is not in the presets (it may inherit)', async () => {
+      const r = await run('Agent', { tool_input: { description: 'd', prompt: 'p', subagent_type: 'statusline-setup' } });
+      expect(r).toMatchObject({ hookSpecificOutput: { permissionDecision: 'ask', permissionDecisionReason: expect.stringContaining('statusline-setup') } });
+    });
+
+    it('allows an overridden built-in and a call without subagent_type or model', async () => {
+      const a = createMasterPreToolUse({ Explore: { description: 'd', prompt: 'p', model: 'haiku' } });
+      const call = (tool_input: object) =>
+        a({ hook_event_name: 'PreToolUse', session_id: 's', transcript_path: '', cwd: '/', tool_name: 'Agent', tool_input, tool_use_id: 't' } as HookInput, 't', { signal: new AbortController().signal });
+      expect(await call({ subagent_type: 'Explore' })).toEqual({});
+      expect(await call({ description: 'd', prompt: 'p' })).toEqual({});
     });
 
     it('passes a subagent call through unchanged', async () => {
@@ -210,5 +232,28 @@ describe('context hooks', () => {
     await bump(root, 'big.md');
     const out = ctx(await prompt());
     expect(out).toBe('big.md changed since session start; re-read it');
+  });
+
+  it('after a compact injection the next prompt does not inject the same change again', async () => {
+    const { root, start, prompt } = await setup({ 'a.md': 'one' });
+    await writeFile(join(root, 'a.md'), 'two');
+    await bump(root, 'a.md');
+    expect(ctx(await start('compact'))).toContain('two');
+    expect(await prompt()).toEqual({});
+  });
+
+  it('names an unreadable changed file instead of throwing, in both hooks', async () => {
+    const { root, start, prompt } = await setup({ 'bin.md': 'x', 'ok.md': 'y' });
+    await writeFile(join(root, 'bin.md'), 'a\0b');
+    await bump(root, 'bin.md');
+    expect(ctx(await start('compact'))).toContain('bin.md changed but could not be read');
+    await writeFile(join(root, 'bin.md'), 'c\0d');
+    await utimes(join(root, 'bin.md'), new Date(), new Date(Date.now() + 9000));
+    expect(ctx(await prompt())).toContain('bin.md changed but could not be read');
+  });
+
+  it('puts a description on one line in the roster', async () => {
+    const { start } = await setup({}, [{ id: 'a', description: 'line one\n\n  line   two', status: 'running', tokens: 1, toolUses: 0 }]);
+    expect(ctx(await start('compact'))).toContain('| line one line two | running |');
   });
 });

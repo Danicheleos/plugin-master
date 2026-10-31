@@ -10,10 +10,9 @@ import {
   type SDKMessage,
   type SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
-import type { ChatMode, ChatModel, ContextUsage } from '@pm/protocol';
+import type { AgentTask, ChatMode, ChatModel, ContextUsage } from '@pm/protocol';
 import { AsyncQueue } from '../lib/async-queue';
 import { createMasterHooks } from './master-hook';
-import type { AgentTask } from '@pm/protocol';
 import { DEFAULT_AGENT_PRESETS, SUBAGENT_MODEL } from './agent-presets';
 
 export type SessionOptions = {
@@ -31,11 +30,11 @@ export type SessionOptions = {
   allowedTools?: string[];
   /** Subagent presets by name (SDK `agents`); the defaults fill the names not given. */
   agents?: Record<string, AgentDefinition>;
-  /** Plugin ids switched off for this session (flag settings, so also with `settingSources: ['project']`). */
   /** MASTER.md and the pinned files: re-injected after compaction and when they change. */
   pinnedFiles?: string[];
   /** The session's subagents (live), for the roster after compaction. */
   tasks?: () => Iterable<AgentTask>;
+  /** Plugin ids switched off for this session (flag settings, so also with `settingSources: ['project']`). */
   disabledPlugins?: string[];
   /** false switches Claude auto memory off; default on. */
   autoMemory?: boolean;
@@ -62,7 +61,6 @@ export const MASTER_MODEL = 'claude-opus-5-5';
  * CLI env var `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, which wins over the `autoCompactWindow` setting.
  */
 const MASTER_AUTO_COMPACT_WINDOW = 300_000;
-export { SUBAGENT_MODEL };
 
 /**
  * `rawMaxTokens` is the resolved auto-compact window (300k under `MASTER_AUTO_COMPACT_WINDOW`; the

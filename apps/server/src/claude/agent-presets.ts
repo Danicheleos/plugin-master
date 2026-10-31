@@ -22,22 +22,24 @@ const REPORT =
 const preset = (
   description: string,
   model: string,
-  tools: string[],
+  tools: string[] | undefined,
   prompt: string,
 ): AgentDefinition => ({
   description,
   model,
-  tools,
+  ...(tools && { tools }),
   disallowedTools: MASTER_ONLY_MCP,
   prompt: `${prompt}\n\n${REPORT}`,
 });
+
+const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob', 'Bash'];
 
 /** Used for every name a space does not define itself. Explicit `tools` keep the `mcp__*` tools out. */
 export const DEFAULT_AGENT_PRESETS: Record<string, AgentDefinition> = {
   reader: preset(
     'Read-only: reads code, traces and logs, and searches. Never changes files.',
     'haiku',
-    ['Read', 'Grep', 'Glob', 'Bash'],
+    READ_ONLY_TOOLS,
     'You are read-only. Never edit or create files; use Bash only for reading commands (ls, cat, grep, git log/diff/show). Answer the question from the brief with exact paths and line numbers.',
   ),
   writer: preset(
@@ -51,6 +53,27 @@ export const DEFAULT_AGENT_PRESETS: Record<string, AgentDefinition> = {
     SUBAGENT_MODEL,
     ['Bash', 'Read'],
     'You run the commands the brief names, exactly as written, and report the real output and exit codes. Do not edit files or fix failures.',
+  ),
+  // CLI 2.1.301 defines Explore and Plan with model "inherit" (the master's Opus), and a definition model beats
+  // CLAUDE_CODE_SUBAGENT_MODEL. A flag-source agent of the same name replaces the built-in, so these keep the
+  // built-ins' jobs on cheaper models. general-purpose has no model of its own; it is pinned for clarity.
+  Explore: preset(
+    'Fast read-only search agent for locating code: finds files by pattern, searches code for keywords, answers questions about the codebase. Say how thorough: "quick", "medium" or "very thorough".',
+    'haiku',
+    READ_ONLY_TOOLS,
+    'You are read-only. Never edit or create files; use Bash only for reading commands. Search broadly, read excerpts, and report exact paths and line numbers.',
+  ),
+  Plan: preset(
+    'Software architect agent for designing implementation plans: returns step-by-step plans, critical files and trade-offs. Read-only.',
+    SUBAGENT_MODEL,
+    READ_ONLY_TOOLS,
+    'You are read-only. Never edit or create files; use Bash only for reading commands. Explore the code the brief names and return a step-by-step implementation plan with the critical files and the trade-offs.',
+  ),
+  'general-purpose': preset(
+    'General-purpose agent for researching complex questions, searching for code and executing multi-step tasks.',
+    SUBAGENT_MODEL,
+    undefined,
+    'You do the task the brief describes, no more, and report the result.',
   ),
 };
 

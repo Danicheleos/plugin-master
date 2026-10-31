@@ -48,6 +48,20 @@ import {
   type SessionFactory,
 } from './session';
 
+/**
+ * A finished subagent drops out of the post-compaction roster after this long without activity.
+ * The roster has no count cap; running tasks always stay. 30 min is a guess, unmeasured: long
+ * enough to resume an agent after a compaction, short enough that a long session's roster stays small.
+ */
+const ROSTER_IDLE_MS = 30 * 60_000;
+
+function rosterTasks(st: Pick<State, 'tasks' | 'taskAt'>): AgentTask[] {
+  const now = Date.now();
+  return [...st.tasks.values()].filter(
+    (t) => t.status === 'running' || now - (st.taskAt.get(t.id) ?? 0) <= ROSTER_IDLE_MS,
+  );
+}
+
 type State = {
   session?: Session;
   /** Records the live session's raw messages to `.plugin-master/runs/`. */
@@ -75,6 +89,8 @@ type State = {
   master: ContextUsage | null;
   current: string | null;
   tasks: Map<string, AgentTask>;
+  /** Time of each task's last update, for the roster after compaction. */
+  taskAt: Map<string, number>;
 };
 
 /** Chat state per space (in memory only) and the hub handlers that drive Claude sessions. */
@@ -109,6 +125,7 @@ export function createSessionManager(
           master: null,
           current: null,
           tasks: new Map(),
+          taskAt: new Map(),
         }),
       );
     return s;
@@ -164,6 +181,7 @@ export function createSessionManager(
     s.master = null;
     s.current = null;
     s.tasks.clear();
+    s.taskAt.clear();
     broadcastStats(spaceId);
   }
   function drop(spaceId: string, session: Session) {
@@ -188,6 +206,7 @@ export function createSessionManager(
     const task = mapTaskMessage(m);
     if (task) {
       const prev = st.tasks.get(task.id);
+      st.taskAt.set(task.id, Date.now());
       st.tasks.set(task.id, {
         description: '',
         status: 'running',
@@ -262,7 +281,7 @@ export function createSessionManager(
       disabledPlugins,
       autoMemory,
       pinnedFiles: [MASTER_PROMPT_FILE, ...masterContext.filter((f) => f !== MASTER_PROMPT_FILE)],
-      tasks: () => state.tasks.values(),
+      tasks: () => rosterTasks(state),
       agents: await loadAgentPresets(root),
       resume: state.sessionId ?? undefined,
       canUseTool: permissions.canUseTool(spaceId),

@@ -36,11 +36,20 @@ export const createMasterPreToolUse = (agents: Record<string, AgentDefinition>):
     return pre('ask', 'Eval runs cost money: the user must confirm.');
   if (input.agent_id) return {};
   // opus or higher for a subagent only on the user's command; the prompt alone did not hold it
-  const call = input.tool_input as { model?: unknown; subagent_type?: unknown } | null;
-  // without a `model` param the agent definition's model applies
-  const model = call?.model ?? (typeof call?.subagent_type === 'string' ? agents[call.subagent_type]?.model : undefined);
-  if ((input.tool_name === 'Agent' || input.tool_name === 'Task') && typeof model === 'string' && /opus|fable/i.test(model))
-    return pre('ask', `Subagent on ${model}: opus or higher only on the user's command.`);
+  if (input.tool_name === 'Agent' || input.tool_name === 'Task') {
+    const call = input.tool_input as { model?: unknown; subagent_type?: unknown } | null;
+    const type = typeof call?.subagent_type === 'string' ? call.subagent_type : undefined;
+    const def = type && Object.hasOwn(agents, type) ? agents[type] : undefined;
+    // the call's model, else the definition's
+    const model = call?.model ?? def?.model;
+    if (typeof model === 'string' && /opus|fable/i.test(model))
+      return pre('ask', `Subagent on ${model}: opus or higher only on the user's command.`);
+    if (model === 'inherit')
+      return pre('ask', "Subagent on inherit: it would run on the master's model, opus or higher only on the user's command.");
+    // no model anywhere and not a preset: may be a built-in that inherits the master's model
+    if (type && !def && model === undefined)
+      return pre('ask', `Subagent type ${type} is not a preset: its model is unknown and may be the master's. Use reader, writer or runner.`);
+  }
   if (
     MASTER_ALLOWED_TOOLS.has(input.tool_name) ||
     OWN_MCP_PREFIXES.some((p) => input.tool_name.startsWith(p))
@@ -81,13 +90,15 @@ export function createMasterHooks(ctx: MasterHookContext) {
   const baseline = Promise.all(
     ctx.files.map(async (rel) => {
       const m = await mtimeOf(ctx.root, rel);
-      if (m) started.set(rel, m.mtime), injected.set(rel, m.mtime);
+      if (!m) return;
+      started.set(rel, m.mtime);
+      injected.set(rel, m.mtime);
     }),
   );
 
   const roster = () =>
     [...ctx.tasks()].map(
-      (t) => `- ${t.id} | ${t.subagentType ?? '-'} | ${t.description || '-'} | ${t.status} | ${t.tokens} tokens`,
+      (t) => `- ${t.id} | ${t.subagentType ?? '-'} | ${t.description.replace(/\s+/g, ' ').trim() || '-'} | ${t.status} | ${t.tokens} tokens`,
     );
 
   /** Files that differ from `since`: whole when small, a re-read line when big. Records every current mtime as injected

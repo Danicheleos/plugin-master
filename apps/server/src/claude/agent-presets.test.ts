@@ -14,12 +14,25 @@ async function space(files: Record<string, string>) {
 describe('default presets', () => {
   it('never name an mcp__ tool and disallow the master-only servers', () => {
     for (const [name, def] of Object.entries(DEFAULT_AGENT_PRESETS)) {
-      expect(def.tools?.length, name).toBeGreaterThan(0);
-      expect(def.tools?.some((t) => t.startsWith('mcp__')), name).toBe(false);
+      expect((def.tools ?? []).some((t) => t.startsWith('mcp__')), name).toBe(false);
       expect(def.disallowedTools).toEqual(['mcp__plan', 'mcp__evals']);
       expect(def.prompt).toContain('Seen on the way:');
       expect(def.prompt).toContain('Not verified:');
     }
+  });
+});
+
+describe('built-in overrides', () => {
+  // CLI 2.1.301 defines Explore and Plan with model "inherit" (the master's Opus); a flag-source agent of the same name replaces the built-in
+  it.each([['Explore', 'haiku'], ['Plan', 'claude-sonnet-5-5'], ['general-purpose', 'claude-sonnet-5-5']])(
+    '%s has its own model %s',
+    (name, model) => {
+      expect(DEFAULT_AGENT_PRESETS[name]?.model).toBe(model);
+      expect(DEFAULT_AGENT_PRESETS[name]?.disallowedTools).toEqual(['mcp__plan', 'mcp__evals']);
+    },
+  );
+  it('keeps Explore and Plan read-only', () => {
+    for (const n of ['Explore', 'Plan']) expect(DEFAULT_AGENT_PRESETS[n]?.tools).toEqual(['Read', 'Grep', 'Glob', 'Bash']);
   });
 });
 
@@ -35,7 +48,7 @@ describe('loadAgentPresets', () => {
       'extra.md': '---\ndescription: Extra\n---\nDo extra.',
     });
     const out = await loadAgentPresets(root);
-    expect(Object.keys(out).sort()).toEqual(['extra', 'reader', 'runner', 'writer']);
+    expect(Object.keys(out).sort()).toEqual(['Explore', 'Plan', 'extra', 'general-purpose', 'reader', 'runner', 'writer']);
     expect(out.reader).toEqual({
       description: 'Custom reader',
       model: 'sonnet',

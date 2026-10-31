@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   MASTER_MODEL,
   sessionQueryOptions,
-  SUBAGENT_MODEL,
   toContextUsage,
   type SessionOptions,
 } from './session';
@@ -21,7 +20,6 @@ describe('sessionQueryOptions', () => {
   it('runs the master on Opus with a 300k auto-compact window and Sonnet subagents', () => {
     const opts = sessionQueryOptions(o, { PATH: '/bin', HOME: '/h' });
     expect(MASTER_MODEL).toBe('claude-opus-5-5');
-    expect(SUBAGENT_MODEL).toBe('claude-sonnet-5-5');
     expect(opts.model).toBe('claude-opus-5-5');
     expect(opts.env).toEqual({
       PATH: '/bin',
@@ -42,7 +40,7 @@ describe('sessionQueryOptions', () => {
     const opts = sessionQueryOptions(o, { CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1' });
     expect(opts.env?.CLAUDE_CODE_SUBAGENT_MODEL_FORCE).toBeUndefined();
     expect(opts.env?.CLAUDE_CODE_SUBAGENT_MODEL).toBe('claude-sonnet-5-5');
-    expect(Object.keys(opts.agents ?? {}).sort()).toEqual(['reader', 'runner', 'writer']);
+    expect(Object.keys(opts.agents ?? {}).sort()).toEqual(['Explore', 'Plan', 'general-purpose', 'reader', 'runner', 'writer']);
     expect(opts.agents?.reader).toMatchObject({ model: 'haiku', tools: ['Read', 'Grep', 'Glob', 'Bash'] });
     expect(opts.agents?.writer?.model).toBe('claude-sonnet-5-5');
     expect(opts.agents?.runner?.tools).toEqual(['Bash', 'Read']);
@@ -52,7 +50,7 @@ describe('sessionQueryOptions', () => {
     const custom = { description: 'd', prompt: 'p', model: 'haiku' };
     const agents = sessionQueryOptions({ ...o, agents: { reader: custom } }).agents;
     expect(agents?.reader).toBe(custom);
-    expect(Object.keys(agents ?? {}).sort()).toEqual(['reader', 'runner', 'writer']);
+    expect(Object.keys(agents ?? {}).sort()).toEqual(['Explore', 'Plan', 'general-purpose', 'reader', 'runner', 'writer']);
   });
 
   it('adds no flag settings for the default config', () => {
