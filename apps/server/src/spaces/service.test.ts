@@ -84,6 +84,8 @@ describe('spaces service', () => {
       evalTrusted: false,
       evalBaselines: {},
       evalRefs: {},
+      disabledPlugins: [],
+      autoMemory: true,
 
       features: FeaturesSchema.parse({}),
     });
@@ -97,6 +99,8 @@ describe('spaces service', () => {
       evalTrusted: false,
       evalBaselines: {},
       evalRefs: {},
+      disabledPlugins: [],
+      autoMemory: true,
       features: FeaturesSchema.parse({}),
     });
     await service.remove(space.id);

@@ -43,6 +43,10 @@ export const SpaceConfigSchema = z.object({
   evalBaselines: z.record(z.string(), z.string()).default({}),
   /** Labelled reference runs per case (`bare`, `sonnet`, ...), shown as badges in the run list. Hand-edited. */
   evalRefs: z.record(z.string(), z.array(z.object({ label: z.string().min(1), runId: z.string().min(1) }))).default({}),
+  /** Plugin ids (`name@marketplace`) switched off in the master session and its subagents; missing in the file = none. */
+  disabledPlugins: z.array(z.string().min(1)).default([]),
+  /** Claude auto memory of the master session and its subagents; missing in the file = true (the CLI default). */
+  autoMemory: z.boolean().default(true),
   features: FeaturesSchema.prefault({}),
 });
 /** What the config PUT accepts; `activePlan` is changed through the plans API. */

@@ -27,3 +27,21 @@ describe('eval baseline pins', () => {
     expect(EvalBaselinePinSchema.safeParse({ case: '', runId: 'r' }).success).toBe(false);
   });
 });
+
+describe('session isolation keys', () => {
+  it('default to no disabled plugins and auto memory on', () => {
+    const c = SpaceConfigSchema.parse({ masterContext: [] });
+    expect(c.disabledPlugins).toEqual([]);
+    expect(c.autoMemory).toBe(true);
+  });
+  it('accept valid values', () => {
+    const c = SpaceConfigSchema.parse({ masterContext: [], disabledPlugins: ['a@b'], autoMemory: false });
+    expect(c).toMatchObject({ disabledPlugins: ['a@b'], autoMemory: false });
+  });
+  it.each([{ disabledPlugins: 'a@b' }, { disabledPlugins: [1] }, { disabledPlugins: [''] }, { autoMemory: 'no' }])(
+    'reject %j',
+    (bad) => {
+      expect(SpaceConfigSchema.safeParse({ masterContext: [], ...bad }).success).toBe(false);
+    },
+  );
+});

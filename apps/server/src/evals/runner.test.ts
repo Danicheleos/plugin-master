@@ -180,7 +180,8 @@ describe('eval runner', () => {
       evalTrusted: true,
       evalBaselines: {},
       evalRefs: {},
-
+      disabledPlugins: [],
+      autoMemory: true,
       features: FeaturesSchema.parse({}),
     });
   });

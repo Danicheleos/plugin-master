@@ -175,6 +175,17 @@ describe('session manager', () => {
     expect(agents.reader).toMatchObject({ description: 'mine', model: 'sonnet' });
   });
 
+  it('passes disabledPlugins and autoMemory from config.json to the session', async () => {
+    const { sessions, client, home } = await setup();
+    await writeFile(join(home, '.plugin-master/config.json'), JSON.stringify({ masterContext: [], disabledPlugins: ['a@m'], autoMemory: false }));
+    const c = await client();
+    c.send({ type: 'subscribe', spaceId: 's1' });
+    await vi.waitFor(() => expect(c.types()).toContain('chat.history'));
+    c.send({ type: 'chat.send', spaceId: 's1', text: 'hi' });
+    await vi.waitFor(() => expect(sessions[0]?.texts).toEqual(['hi']));
+    expect(sessions[0].o).toMatchObject({ disabledPlugins: ['a@m'], autoMemory: false });
+  });
+
   it('runs a chat turn, keeps history for new subscribers and resets', async () => {
     const { sessions, client } = await setup();
     const c = await client();

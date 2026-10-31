@@ -56,6 +56,29 @@ describe('sessionQueryOptions', () => {
     expect(Object.keys(agents ?? {}).sort()).toEqual(['reader', 'runner', 'writer']);
   });
 
+  it('adds no flag settings for the default config', () => {
+    for (const userSettings of [true, false]) {
+      const opts = sessionQueryOptions({ ...o, userSettings, disabledPlugins: [], autoMemory: true }, { PATH: '/bin' });
+      expect(opts.settings).toBeUndefined();
+      expect(opts.env).not.toHaveProperty('CLAUDE_CODE_DISABLE_AUTO_MEMORY');
+    }
+  });
+
+  it('turns disabledPlugins into enabledPlugins false flag settings in both userSettings modes', () => {
+    for (const userSettings of [true, false]) {
+      const opts = sessionQueryOptions({ ...o, userSettings, disabledPlugins: ['a@m', 'b@m'] });
+      expect(opts.settings).toEqual({ enabledPlugins: { 'a@m': false, 'b@m': false } });
+    }
+  });
+
+  it('turns autoMemory false into autoMemoryEnabled false and clears an inherited DISABLE_AUTO_MEMORY=0', () => {
+    for (const userSettings of [true, false]) {
+      const opts = sessionQueryOptions({ ...o, userSettings, autoMemory: false }, { CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0' });
+      expect(opts.settings).toEqual({ autoMemoryEnabled: false });
+      expect(opts.env).toHaveProperty('CLAUDE_CODE_DISABLE_AUTO_MEMORY', undefined);
+    }
+  });
+
   it('loads user and local settings only when userSettings is on', () => {
     expect(sessionQueryOptions({ ...o, userSettings: true }).settingSources).toEqual(['user', 'project', 'local']);
     expect(sessionQueryOptions({ ...o, userSettings: false }).settingSources).toEqual(['project']);

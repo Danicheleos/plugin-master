@@ -61,7 +61,8 @@ describe('plans service', () => {
       evalTrusted: false,
       evalBaselines: {},
       evalRefs: {},
-
+      disabledPlugins: [],
+      autoMemory: true,
       features: FeaturesSchema.parse({}),
     });
   });

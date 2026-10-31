@@ -236,10 +236,12 @@ export function createSessionManager(
     // Fixed for the session's lifetime. A bad config or file throws: no session with partial context.
     let masterContext: string[];
     let userSettings: boolean;
+    let disabledPlugins: string[];
+    let autoMemory: boolean;
     let append: string;
     let missing: string[];
     try {
-      ({ masterContext, features: { userSettings } } = await spaces.getConfig(spaceId));
+      ({ masterContext, disabledPlugins, autoMemory, features: { userSettings } } = await spaces.getConfig(spaceId));
       ({ text: append, missing } = await buildContext(root, masterContext.filter((f) => f !== MASTER_PROMPT_FILE)));
       append = [await loadMasterPrompt(root), append].join('\n\n');
     } catch (e) {
@@ -257,6 +259,8 @@ export function createSessionManager(
       mode: state.mode,
       model: state.model,
       userSettings,
+      disabledPlugins,
+      autoMemory,
       agents: await loadAgentPresets(root),
       resume: state.sessionId ?? undefined,
       canUseTool: permissions.canUseTool(spaceId),

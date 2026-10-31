@@ -2,6 +2,7 @@ import {
   query,
   type AgentDefinition,
   type Options,
+  type Settings,
   type McpSdkServerConfigWithInstance,
   type CanUseTool,
   type Query,
@@ -29,6 +30,10 @@ export type SessionOptions = {
   allowedTools?: string[];
   /** Subagent presets by name (SDK `agents`); the defaults fill the names not given. */
   agents?: Record<string, AgentDefinition>;
+  /** Plugin ids switched off for this session (flag settings, so also with `settingSources: ['project']`). */
+  disabledPlugins?: string[];
+  /** false switches Claude auto memory off; default on. */
+  autoMemory?: boolean;
   onMessage: (m: SDKMessage) => void;
   onError: (e: unknown) => void;
 };
@@ -76,6 +81,17 @@ export function toContextUsage(
   };
 }
 
+/** Only non-default values are emitted, so a default config adds nothing. */
+function sessionFlagSettings(o: Pick<SessionOptions, 'disabledPlugins' | 'autoMemory'>): Settings | undefined {
+  const settings: Settings = {
+    ...(o.disabledPlugins?.length && {
+      enabledPlugins: Object.fromEntries(o.disabledPlugins.map((id) => [id, false])),
+    }),
+    ...(o.autoMemory === false && { autoMemoryEnabled: false }),
+  };
+  return Object.keys(settings).length ? settings : undefined;
+}
+
 /** SDK `query()` options of a master session. */
 export function sessionQueryOptions(
   o: SessionOptions,
@@ -92,7 +108,11 @@ export function sessionQueryOptions(
       CLAUDE_CODE_SUBAGENT_MODEL: SUBAGENT_MODEL,
       // inherited FORCE would drop the presets' models and the Agent tool's `model` input
       CLAUDE_CODE_SUBAGENT_MODEL_FORCE: undefined,
+      // a defined falsy value (e.g. `0`) forces memory ON over the `autoMemoryEnabled` setting
+      ...(o.autoMemory === false && { CLAUDE_CODE_DISABLE_AUTO_MEMORY: undefined }),
     },
+    // flag scope beats user/project/local, and is active whatever `settingSources` says
+    settings: sessionFlagSettings(o),
     systemPrompt: {
       type: 'preset',
       preset: 'claude_code',
