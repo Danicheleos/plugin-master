@@ -30,10 +30,12 @@ export type SessionOptions = {
   allowedTools?: string[];
   /** Subagent presets by name (SDK `agents`); the defaults fill the names not given. */
   agents?: Record<string, AgentDefinition>;
-  /** MASTER.md and the pinned files: re-injected after compaction and when they change. */
+  /** MASTER.md and the pinned files: changed ones are injected after compaction. */
   pinnedFiles?: string[];
   /** The session's subagents (live), for the roster after compaction. */
   tasks?: () => Iterable<AgentTask>;
+  /** The active plan, for the line after compaction. */
+  plan?: () => Promise<{ title: string; phase?: string } | null>;
   /** Plugin ids switched off for this session (flag settings, so also with `settingSources: ['project']`). */
   disabledPlugins?: string[];
   /** false switches Claude auto memory off; default on. */
@@ -131,7 +133,7 @@ export function sessionQueryOptions(
     // per-call and definition models apply (no CLAUDE_CODE_SUBAGENT_MODEL_FORCE); a space's own
     // presets are merged over the defaults by the session manager
     agents,
-    hooks: createMasterHooks({ root: o.cwd, files: o.pinnedFiles ?? [], tasks: o.tasks ?? (() => []), agents }),
+    hooks: createMasterHooks({ root: o.cwd, files: o.pinnedFiles ?? [], tasks: o.tasks ?? (() => []), agents, plan: o.plan }),
   };
 }
 

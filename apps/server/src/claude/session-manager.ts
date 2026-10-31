@@ -272,6 +272,9 @@ export function createSessionManager(
     }
     if (state.generation !== generation) return undefined; // reset meanwhile
     const writer = recorder.start(root, state.sessionId ?? undefined);
+    const plansService = createPlansService(root, () =>
+      hub.broadcast(spaceId, { type: 'plans.changed', spaceId }),
+    );
     const session: Session = newSession({
       cwd: root,
       appendSystemPrompt: append,
@@ -282,14 +285,16 @@ export function createSessionManager(
       autoMemory,
       pinnedFiles: [MASTER_PROMPT_FILE, ...masterContext.filter((f) => f !== MASTER_PROMPT_FILE)],
       tasks: () => rosterTasks(state),
+      plan: async () => {
+        const cur = await plansService.current();
+        return cur && { title: cur.plan.title, phase: cur.plan.phases.find((p) => p.status === 'in_progress')?.title };
+      },
       agents: await loadAgentPresets(root),
       resume: state.sessionId ?? undefined,
       canUseTool: permissions.canUseTool(spaceId),
       mcpServers: {
         [PLAN_SERVER]: createPlanMcpServer(
-          createPlansService(root, () =>
-            hub.broadcast(spaceId, { type: 'plans.changed', spaceId }),
-          ),
+          plansService,
         ),
         ...(evals && {
           [EVAL_SERVER]: createEvalMcpServer(

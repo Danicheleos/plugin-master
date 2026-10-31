@@ -125,68 +125,92 @@ describe('masterPreToolUse', () => {
     });
   });
 
-  it('registers PreToolUse for every tool, SessionStart on compact and UserPromptSubmit', () => {
+  it('registers PreToolUse for every tool and SessionStart on compact, nothing on UserPromptSubmit', () => {
     const h = createMasterHooks({ root: '/', files: [], tasks: () => [], agents });
     expect(h.PreToolUse).toHaveLength(1);
     expect(h.SessionStart[0]?.matcher).toBe('compact');
-    expect(h.UserPromptSubmit).toHaveLength(1);
+    expect(h).not.toHaveProperty('UserPromptSubmit');
+  });
+
+  describe('subagent output files', () => {
+    const read = (file_path: string, extra: Record<string, unknown> = {}) => run('Read', { tool_input: { file_path }, ...extra });
+    const OUT = '/private/tmp/claude-501/-Users-x-space/4655be37/tasks/a1b2c3.output';
+
+    it('denies the master reading a task output file, under any temp dir', async () => {
+      for (const p of [OUT, '/tmp/claude-1000/proj/s/tasks/x.output', 'C:\\Temp\\claude\\tasks\\x.output']) {
+        const r = (await read(p)) as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason: string } };
+        expect(r.hookSpecificOutput.permissionDecision).toBe('deny');
+        expect(r.hookSpecificOutput.permissionDecisionReason).toContain('Subagent output files are full transcripts');
+      }
+    });
+
+    it('lets other reads and a subagent through', async () => {
+      expect(await read('/space/tasks/notes.md')).toEqual({});
+      expect(await read('/space/out/tasks/x.output.md')).toEqual({});
+      expect(await read(OUT, { agent_id: 'a1' })).toEqual({});
+    });
   });
 });
 
 describe('context hooks', () => {
   const opt = { signal: new AbortController().signal };
-  async function setup(files: Record<string, string>, tasks: AgentTask[] = []) {
+  async function setup(files: Record<string, string>, tasks: AgentTask[] = [], plan?: () => Promise<{ title: string; phase?: string } | null>) {
     const root = await mkdtemp(join(tmpdir(), 'pm-hook-'));
     await mkdir(join(root, '.plugin-master'));
     for (const [f, c] of Object.entries(files)) await writeFile(join(root, f), c);
-    const h = createMasterHooks({ root, files: Object.keys(files), tasks: () => tasks, agents });
+    const h = createMasterHooks({ root, files: Object.keys(files), tasks: () => tasks, agents, plan });
     const base = { session_id: 's', transcript_path: '', cwd: root };
     const start = (source: string) =>
       h.SessionStart[0]!.hooks[0]!({ ...base, hook_event_name: 'SessionStart', source } as HookInput, 't', opt);
-    const prompt = () =>
-      h.UserPromptSubmit[0]!.hooks[0]!({ ...base, hook_event_name: 'UserPromptSubmit', prompt: 'x' } as HookInput, 't', opt);
-    return { root, start, prompt };
+    return { root, start };
   }
   const ctx = (r: unknown) => (r as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput?.additionalContext;
   const bump = (root: string, f: string) => utimes(join(root, f), new Date(), new Date(Date.now() + 5000));
 
   const UNCHANGED = (paths: string) => `Unchanged since session start, the system-prompt copies are current: ${paths}.`;
-  const agent1: AgentTask = { id: 'ag1', description: 'check logs', subagentType: 'reader', status: 'running', tokens: 1234, toolUses: 2 };
+  const SUPERSEDE =
+    'These copies replace the copies in the system prompt, which are from session start and cannot change mid-session. The summary above may be wrong; verify against these files.';
+  const CALL_PLAN = 'Call mcp__plan__plan_get before continuing the task.';
+  const agent1: AgentTask = { id: 'ag1', description: 'check logs', subagentType: 'reader', status: 'running', tokens: 1234, toolUses: 2, taskType: 'local_agent' };
+  const bash1: AgentTask = { id: 'bg1', description: 'npm run dev', status: 'running', tokens: 0, toolUses: 0, taskType: 'local_bash' };
+  const plan = async () => ({ title: 'Ship v2', phase: 'Write tests' });
 
-  it('compact with nothing changed: only the unchanged-files line and the roster, no file bodies', async () => {
-    const { start } = await setup({ 'a.md': 'one', 'b.md': 'two' }, [agent1]);
+  it('compact with nothing changed: the unchanged-files line, the plan line and the roster, no file bodies', async () => {
+    const { start } = await setup({ 'a.md': 'one', 'b.md': 'two' }, [agent1], plan);
     const out = ctx(await start('compact'));
     expect(out).not.toContain('<file');
     expect(out).not.toContain('plugin-master context');
+    expect(out).not.toContain(SUPERSEDE);
     expect(out).toContain(UNCHANGED('a.md, b.md'));
+    expect(out).toContain('Active plan: "Ship v2", current phase: Write tests.');
+    expect(out).toContain(CALL_PLAN);
     expect(out).toContain('- ag1 | reader | check logs | running | 1234 tokens');
   });
 
-  it('compact with nothing changed and no roster returns {}', async () => {
-    const { start } = await setup({ 'a.md': 'one' });
-    expect(await start('compact')).toEqual({});
+  it('compact with nothing changed and no roster still carries the plan instruction', async () => {
+    const { start } = await setup({ 'a.md': 'one' }, [], async () => null);
+    const out = ctx(await start('compact'));
+    expect(out).toContain('No plan is attached; call mcp__plan__plan_get to check.');
+    expect(out).not.toContain(CALL_PLAN);
   });
 
-  it('compact injects a file changed before the compaction and names the others as unchanged', async () => {
-    const { root, start } = await setup({ 'a.md': 'old text', 'b.md': 'two' }, [agent1]);
+  it('compact with a plan that has no phase in progress says so, and a failing lookup falls back to the instruction', async () => {
+    const a = ctx(await (await setup({}, [], async () => ({ title: 'P' }))).start('compact'));
+    expect(a).toContain('Active plan: "P", no phase in progress.');
+    const b = ctx(await (await setup({}, [], async () => { throw new Error('boom'); })).start('compact'));
+    expect(b).toContain(CALL_PLAN);
+  });
+
+  it('compact injects a changed file after the supersede line and names the others as unchanged', async () => {
+    const { root, start } = await setup({ 'a.md': 'old text', 'b.md': 'two' }, [agent1], plan);
     await writeFile(join(root, 'a.md'), 'NEW text');
     await bump(root, 'a.md');
-    const out = ctx(await start('compact'));
+    const out = ctx(await start('compact'))!;
+    expect(out.startsWith(SUPERSEDE)).toBe(true);
     expect(out).toContain('<file path="a.md">\nNEW text\n</file>');
     expect(out).not.toContain('<file path="b.md">');
     expect(out).toContain(UNCHANGED('b.md'));
     expect(out).toContain('- ag1 | reader');
-  });
-
-  it('compact injects again a file that UserPromptSubmit injected before the compaction', async () => {
-    const { root, start, prompt } = await setup({ 'a.md': 'one', 'b.md': 'two' });
-    await writeFile(join(root, 'a.md'), 'ONE changed');
-    await bump(root, 'a.md');
-    expect(ctx(await prompt())).toContain('ONE changed');
-    expect(await prompt()).toEqual({});
-    const out = ctx(await start('compact'));
-    expect(out).toContain('<file path="a.md">\nONE changed\n</file>');
-    expect(out).toContain(UNCHANGED('b.md'));
   });
 
   it('compact names a changed file over 8 KB instead of injecting it', async () => {
@@ -194,62 +218,44 @@ describe('context hooks', () => {
     await writeFile(join(root, 'big.md'), 'y'.repeat(9000));
     await bump(root, 'big.md');
     const out = ctx(await start('compact'));
+    expect(out).toContain(SUPERSEDE);
     expect(out).toContain('big.md changed since session start; re-read it');
     expect(out).not.toContain('<file');
     expect(out).toContain(UNCHANGED('b.md'));
   });
 
-  it('after a compaction UserPromptSubmit does not re-inject a file the compaction already injected', async () => {
-    const { root, start, prompt } = await setup({ 'a.md': 'one', 'b.md': 'two' });
-    await writeFile(join(root, 'a.md'), 'ONE changed');
+  it('compact injects again a file changed twice: always compared with the session start', async () => {
+    const { root, start } = await setup({ 'a.md': 'one' });
+    await writeFile(join(root, 'a.md'), 'two');
     await bump(root, 'a.md');
-    expect(ctx(await start('compact'))).toContain('ONE changed');
-    expect(await prompt()).toEqual({});
+    expect(ctx(await start('compact'))).toContain('two');
+    expect(ctx(await start('compact'))).toContain('<file path="a.md">\ntwo\n</file>');
   });
 
-  it('compact SessionStart gives only the roster without pinned files, nothing for other sources', async () => {
+  it('the roster lists agent tasks only, not background shell tasks', async () => {
+    const agent2: AgentTask = { ...agent1, id: 'ag2', subagentType: 'writer' };
+    const { start } = await setup({}, [agent1, bash1, agent2]);
+    const out = ctx(await start('compact'))!;
+    expect(out).toContain('- ag1 |');
+    expect(out).toContain('- ag2 |');
+    expect(out).not.toContain('bg1');
+    expect(out).not.toContain('npm run dev');
+  });
+
+  it('compact without pinned files gives the plan line and the roster, nothing for other sources', async () => {
     const { start } = await setup({}, [{ id: 'ag1', description: 'd', status: 'completed', tokens: 5, toolUses: 1 }]);
     const out = ctx(await start('compact'));
     expect(out).toContain('ag1');
+    expect(out).toContain('mcp__plan__plan_get');
     expect(out).not.toContain('<file');
     expect(await start('startup')).toEqual({});
   });
 
-  it('UserPromptSubmit injects a changed file once, and nothing when unchanged', async () => {
-    const { root, prompt } = await setup({ 'a.md': 'one', 'b.md': 'two' });
-    expect(await prompt()).toEqual({});
-    await writeFile(join(root, 'a.md'), 'ONE changed');
-    await bump(root, 'a.md');
-    const out = ctx(await prompt());
-    expect(out).toContain('<file path="a.md">\nONE changed\n</file>');
-    expect(out).not.toContain('b.md');
-    expect(await prompt()).toEqual({});
-  });
-
-  it('UserPromptSubmit names a changed file over 8 KB instead of injecting it', async () => {
-    const { root, prompt } = await setup({ 'big.md': 'x' });
-    await writeFile(join(root, 'big.md'), 'y'.repeat(9000));
-    await bump(root, 'big.md');
-    const out = ctx(await prompt());
-    expect(out).toBe('big.md changed since session start; re-read it');
-  });
-
-  it('after a compact injection the next prompt does not inject the same change again', async () => {
-    const { root, start, prompt } = await setup({ 'a.md': 'one' });
-    await writeFile(join(root, 'a.md'), 'two');
-    await bump(root, 'a.md');
-    expect(ctx(await start('compact'))).toContain('two');
-    expect(await prompt()).toEqual({});
-  });
-
-  it('names an unreadable changed file instead of throwing, in both hooks', async () => {
-    const { root, start, prompt } = await setup({ 'bin.md': 'x', 'ok.md': 'y' });
+  it('names an unreadable changed file instead of throwing', async () => {
+    const { root, start } = await setup({ 'bin.md': 'x', 'ok.md': 'y' });
     await writeFile(join(root, 'bin.md'), 'a\0b');
     await bump(root, 'bin.md');
     expect(ctx(await start('compact'))).toContain('bin.md changed but could not be read');
-    await writeFile(join(root, 'bin.md'), 'c\0d');
-    await utimes(join(root, 'bin.md'), new Date(), new Date(Date.now() + 9000));
-    expect(ctx(await prompt())).toContain('bin.md changed but could not be read');
   });
 
   it('puts a description on one line in the roster', async () => {

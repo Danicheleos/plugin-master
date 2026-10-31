@@ -103,6 +103,7 @@ export function mapTaskMessage(m: SDKMessage): TaskUpdate | undefined {
       id: m.task_id,
       description: m.description,
       ...(m.subagent_type && { subagentType: m.subagent_type }),
+      ...(m.task_type && { taskType: m.task_type }),
       status: 'running',
       tokens: 0,
       toolUses: 0,

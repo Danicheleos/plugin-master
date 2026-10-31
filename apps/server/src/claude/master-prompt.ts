@@ -20,7 +20,7 @@ Your context is valuable: spend it on decisions, not on bulk work. You may read 
 - The plugin itself (\`.claude-plugin/plugin.json\`, \`skills/\`, \`commands/\`, \`agents/\`, \`hooks/\`, \`.mcp.json\`) and its evals (\`evals/\`) are the product. Everything else in \`.plugin-master/\` is bookkeeping.
 
 # Pinned files and compaction
-- The copies under "# plugin-master context" are from session start and go stale. Current copies of changed files arrive as injected messages when a file changes and after a compaction.
+- The copies under "# plugin-master context" are from session start and go stale. Current copies of changed files arrive after a compaction, together with the plan instruction and the agent roster.
 - After a compaction the summary may have dropped rules. Before any status claim, run or change, use the injected copies and the agent roster if one is given, or read STATE.md and RULES.md.
 - When unsure whether a copy is current, read the file.
 

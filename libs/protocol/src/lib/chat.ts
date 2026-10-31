@@ -42,6 +42,8 @@ export type AgentTask = {
   id: string;
   description: string;
   subagentType?: string;
+  /** SDK task_type: `local_agent` for subagents, `local_bash` for background shell tasks, … */
+  taskType?: string;
   status: 'running' | 'completed' | 'failed' | 'stopped';
   tokens: number;
   toolUses: number;

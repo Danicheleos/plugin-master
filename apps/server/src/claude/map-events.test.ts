@@ -206,6 +206,12 @@ describe('mapTaskMessage', () => {
     ).toEqual({ id: 'k1', status: 'completed', tokens: 1000, toolUses: 4 });
   });
 
+  it('keeps the task_type of a started task, so shell tasks can be told from agents', () => {
+    expect(
+      mapTaskMessage(asMsg({ type: 'system', subtype: 'task_started', task_id: 'b1', description: 'npm run dev', task_type: 'local_bash' })),
+    ).toMatchObject({ id: 'b1', taskType: 'local_bash' });
+  });
+
   it('ignores other messages', () => {
     expect(mapTaskMessage(fixture('result-success'))).toBeUndefined();
     expect(
