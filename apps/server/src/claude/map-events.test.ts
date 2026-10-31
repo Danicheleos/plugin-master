@@ -7,6 +7,7 @@ import type {
 import { describe, expect, it } from 'vitest';
 import {
   describeToolUse,
+  mapSdkBlocks,
   mapSdkMessage,
   mapSessionMessage,
   mapTaskMessage,
@@ -83,6 +84,46 @@ describe('mapSdkMessage', () => {
     expect(mapSdkMessage(asMsg({ type: 'system', subtype: 'init' }))).toEqual(
       [],
     );
+  });
+
+  it('skips live subagent messages, as the history mapper does', () => {
+    const sub = (content: unknown[], type = 'assistant') =>
+      asMsg({
+        type,
+        message: { content },
+        parent_tool_use_id: 'toolu_1',
+      });
+    expect(
+      mapSdkMessage(sub([{ type: 'text', text: 'sub says hi' }])),
+    ).toEqual([]);
+    expect(
+      mapSdkMessage(
+        sub([{ type: 'tool_use', id: 'x', name: 'Read', input: {} }]),
+      ),
+    ).toEqual([]);
+    expect(
+      mapSdkMessage(
+        sub([{ type: 'tool_result', tool_use_id: 'x', content: 'ok' }], 'user'),
+      ),
+    ).toEqual([]);
+  });
+
+  it('keeps the unfiltered blocks of a subagent message for activity tracking', () => {
+    expect(
+      mapSdkBlocks(
+        asMsg({
+          type: 'assistant',
+          message: {
+            content: [
+              { type: 'tool_use', id: 'x', name: 'Read', input: { path: 'a' } },
+            ],
+          },
+          parent_tool_use_id: 'toolu_1',
+        }),
+      ),
+    ).toEqual([
+      { kind: 'tool_use', id: 'x', name: 'Read', input: { path: 'a' } },
+    ]);
   });
 
   it('maps stored session messages and skips subagent internals', () => {

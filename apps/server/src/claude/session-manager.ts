@@ -34,7 +34,12 @@ import { commitTurn, snapshot, type Snapshot } from './auto-commit';
 import { MASTER_PROMPT_FILE, loadMasterPrompt } from './master-prompt';
 import { createPermissions } from './permissions';
 import { sdkHistory, type History } from './history';
-import { describeToolUse, mapSdkMessage, mapTaskMessage } from './map-events';
+import {
+  describeToolUse,
+  mapSdkBlocks,
+  mapSdkMessage,
+  mapTaskMessage,
+} from './map-events';
 import {
   createClaudeSession,
   MASTER_MODEL,
@@ -283,7 +288,7 @@ export function createSessionManager(
           setMode(spaceId, reported as ChatMode);
         const events = mapSdkMessage(m);
         emit(spaceId, ...events);
-        trackActivity(spaceId, session, m, events);
+        trackActivity(spaceId, session, m, mapSdkBlocks(m));
         if (events.some((e) => e.kind === 'result')) {
           const st = stateOf(spaceId);
           const turn = st.turns.shift();

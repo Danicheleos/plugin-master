@@ -161,6 +161,20 @@ describe('session manager', () => {
     expect(sessions[0].o.allowedTools).not.toContain('mcp__evals__eval_run');
   });
 
+  it('passes the space agent presets, merged over the defaults, to the session', async () => {
+    const { sessions, client, home } = await setup();
+    await mkdir(join(home, '.plugin-master/agents'));
+    await writeFile(join(home, '.plugin-master/agents/reader.md'), '---\ndescription: mine\nmodel: sonnet\n---\nmy reader');
+    const c = await client();
+    c.send({ type: 'subscribe', spaceId: 's1' });
+    await vi.waitFor(() => expect(c.types()).toContain('chat.history'));
+    c.send({ type: 'chat.send', spaceId: 's1', text: 'hi' });
+    await vi.waitFor(() => expect(sessions[0]?.texts).toEqual(['hi']));
+    const agents = sessions[0].o.agents ?? {};
+    expect(Object.keys(agents).sort()).toEqual(['reader', 'runner', 'writer']);
+    expect(agents.reader).toMatchObject({ description: 'mine', model: 'sonnet' });
+  });
+
   it('runs a chat turn, keeps history for new subscribers and resets', async () => {
     const { sessions, client } = await setup();
     const c = await client();
@@ -483,6 +497,75 @@ describe('session manager', () => {
     await vi.waitFor(() =>
       expect(stats().at(-1)).toMatchObject({ master: null, tasks: [] }),
     );
+  });
+
+  it('keeps subagent messages out of the chat while task stats and notifications still flow', async () => {
+    const { sessions, client } = await setup();
+    const c = await client();
+    c.send({ type: 'subscribe', spaceId: 's1' });
+    c.send({ type: 'chat.send', spaceId: 's1', text: 'hi' });
+    await vi.waitFor(() => expect(sessions[0]).toBeDefined());
+    const o = sessions[0].o;
+    const sub = (content: unknown[]) =>
+      asMsg({
+        type: 'assistant',
+        message: { content },
+        parent_tool_use_id: 'toolu_1',
+      });
+    const stats = () =>
+      c.msgs.filter(
+        (m): m is Extract<ServerMessage, { type: 'agent.stats' }> =>
+          m.type === 'agent.stats',
+      );
+    o.onMessage(
+      asMsg({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'k1',
+        description: 'Research',
+        subagent_type: 'Explore',
+      }),
+    );
+    o.onMessage(sub([{ type: 'text', text: 'subagent chatter' }]));
+    o.onMessage(
+      sub([
+        { type: 'tool_use', id: 't9', name: 'Grep', input: { pattern: 'x' } },
+      ]),
+    );
+    o.onMessage(
+      asMsg({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'master speaks' }] },
+      }),
+    );
+    o.onMessage(
+      asMsg({
+        type: 'system',
+        subtype: 'task_progress',
+        task_id: 'k1',
+        description: 'Research',
+        usage: { total_tokens: 700, tool_uses: 4, duration_ms: 1 },
+      }),
+    );
+    o.onMessage(
+      asMsg({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'k1',
+        status: 'completed',
+        usage: { total_tokens: 800, tool_uses: 5, duration_ms: 2 },
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(stats().at(-1)).toMatchObject({
+        current: 'Grep: x',
+        tasks: [{ id: 'k1', status: 'completed', tokens: 800, toolUses: 5 }],
+      }),
+    );
+    const chat = c.msgs.flatMap((m) =>
+      m.type === 'chat.event' && m.event.kind !== 'user' ? [m.event] : [],
+    );
+    expect(chat).toEqual([{ kind: 'text', text: 'master speaks' }]);
   });
 
   it('tracks the permission mode per space', async () => {

@@ -18,8 +18,23 @@ function textOf(content: unknown): string {
     .join('');
 }
 
-/** The only place that knows the shape of SDK messages. */
+/** True for a message produced inside a subagent (live SDK and stored transcripts alike). */
+function isSubagentMessage(m: {
+  parent_tool_use_id?: string | null;
+  parent_agent_id?: string | null;
+}): boolean {
+  return Boolean(m.parent_tool_use_id || m.parent_agent_id);
+}
+
+/** Chat events of the master only; subagent messages map to nothing. */
 export function mapSdkMessage(m: SDKMessage): ChatEvent[] {
+  return isSubagentMessage(m as Parameters<typeof isSubagentMessage>[0])
+    ? []
+    : mapSdkBlocks(m);
+}
+
+/** The only place that knows the shape of SDK messages; unfiltered, so activity tracking still sees subagent tool calls. */
+export function mapSdkBlocks(m: SDKMessage): ChatEvent[] {
   if (m.type === 'assistant') {
     return blocksOf(m.message.content).flatMap((b): ChatEvent[] => {
       if (b.type === 'text') return [{ kind: 'text', text: String(b.text) }];
@@ -64,9 +79,9 @@ export function mapSdkMessage(m: SDKMessage): ChatEvent[] {
 
 /** Maps a stored transcript message (API message shape) to events; subagent internals are skipped. */
 export function mapSessionMessage(m: SessionMessage): ChatEvent[] {
-  if (m.parent_tool_use_id || m.parent_agent_id) return [];
+  if (isSubagentMessage(m)) return [];
   if (m.type === 'assistant')
-    return mapSdkMessage({
+    return mapSdkBlocks({
       type: 'assistant',
       message: m.message,
     } as SDKMessage);
@@ -74,7 +89,7 @@ export function mapSessionMessage(m: SessionMessage): ChatEvent[] {
   const text = textOf((m.message as { content?: unknown })?.content);
   return [
     ...(text ? [{ kind: 'user', text } as const] : []),
-    ...mapSdkMessage({ type: 'user', message: m.message } as SDKMessage),
+    ...mapSdkBlocks({ type: 'user', message: m.message } as SDKMessage),
   ];
 }
 
