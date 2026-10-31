@@ -31,6 +31,10 @@ export const masterPreToolUse: HookCallback = async (input) => {
   if (ALWAYS_ASK_TOOLS.has(input.tool_name))
     return pre('ask', 'Eval runs cost money: the user must confirm.');
   if (input.agent_id) return {};
+  // opus or higher for a subagent only on the user's command; the prompt alone did not hold it
+  const model = (input.tool_input as { model?: unknown } | null)?.model;
+  if ((input.tool_name === 'Agent' || input.tool_name === 'Task') && typeof model === 'string' && /opus|fable/i.test(model))
+    return pre('ask', `Subagent on ${model}: opus or higher only on the user's command.`);
   if (
     MASTER_ALLOWED_TOOLS.has(input.tool_name) ||
     OWN_MCP_PREFIXES.some((p) => input.tool_name.startsWith(p))

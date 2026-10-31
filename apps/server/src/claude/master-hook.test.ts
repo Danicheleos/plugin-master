@@ -56,6 +56,34 @@ describe('masterPreToolUse', () => {
     expect(r).toMatchObject({ hookSpecificOutput: { permissionDecision: 'ask' } });
   });
 
+  describe('subagent model', () => {
+    const agent = (tool: string, model?: string, extra: Record<string, unknown> = {}) =>
+      run(tool, { tool_input: { description: 'd', prompt: 'p', ...(model ? { model } : {}) }, ...extra });
+
+    it.each(['Agent', 'Task'])('asks for %s on opus', async (tool) => {
+      expect(await agent(tool, 'opus')).toEqual({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'ask',
+          permissionDecisionReason: "Subagent on opus: opus or higher only on the user's command.",
+        },
+      });
+    });
+
+    it('asks for a fable model id', async () => {
+      const r = await agent('Agent', 'claude-fable-5-1');
+      expect(r).toMatchObject({ hookSpecificOutput: { permissionDecision: 'ask' } });
+    });
+
+    it.each([['sonnet'], ['haiku'], [undefined]])('allows model %s', async (model) => {
+      expect(await agent('Agent', model)).toEqual({});
+    });
+
+    it('passes a subagent call through unchanged', async () => {
+      expect(await agent('Agent', 'opus', { agent_id: 'a1' })).toEqual({});
+    });
+  });
+
   it('is registered for every tool', () => {
     expect(MASTER_HOOKS.PreToolUse).toEqual([{ hooks: [masterPreToolUse] }]);
   });
