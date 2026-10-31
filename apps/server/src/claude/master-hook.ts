@@ -95,11 +95,9 @@ const CALL_PLAN = 'Call mcp__plan__plan_get before continuing the task.';
 
 /** One hooks object per session: it owns the mtimes at session start. */
 export function createMasterHooks(ctx: MasterHookContext) {
-  // The summary drops earlier injections and only the system-prompt copies from session start
-  // remain, so every compaction compares with the session-start mtimes. Pinned files are injected
-  // only then: a per-prompt injection re-sent STATE.md after each edit by the master itself
-  // (5 copies in one measured session). The exception is CHECKLIST.md, a short file written for
-  // the master to see each turn, so it is injected on every prompt.
+  // Compaction drops earlier injections, so it compares with the session-start mtimes. STATE.md
+  // is injected only then: per prompt it would be re-sent after each edit the master makes itself.
+  // Only the short CHECKLIST.md goes in on every prompt.
   const started = new Map<string, number>();
   const baseline = Promise.all(
     ctx.files.map(async (rel) => {
@@ -162,7 +160,12 @@ export function createMasterHooks(ctx: MasterHookContext) {
 
   const userPrompt: HookCallback = async (input) => {
     if (input.hook_event_name !== 'UserPromptSubmit') return {};
-    const text = await readFile(resolveInSpace(ctx.root, CHECKLIST), 'utf8').catch(() => '');
+    let text: string;
+    try {
+      text = await readFile(resolveInSpace(ctx.root, CHECKLIST), 'utf8');
+    } catch {
+      return {};
+    }
     if (!text.trim()) return {};
     return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: text } };
   };

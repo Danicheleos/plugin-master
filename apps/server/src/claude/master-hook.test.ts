@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HookInput } from '@anthropic-ai/claude-agent-sdk';
-import { mkdir, mkdtemp, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentTask } from '@pm/protocol';
@@ -188,6 +188,14 @@ describe('context hooks', () => {
     expect(await prompt()).toEqual(expected);
     await writeFile(join(root, '.plugin-master/CHECKLIST.md'), '- [x] second');
     expect(ctx(await prompt())).toBe('- [x] second');
+  });
+
+  it('UserPromptSubmit returns {} when CHECKLIST.md is a symlink out of the space', async () => {
+    const { root, prompt } = await setup({});
+    const outside = join(await mkdtemp(join(tmpdir(), 'pm-outside-')), 'secret.md');
+    await writeFile(outside, '- [ ] leaked\n');
+    await symlink(outside, join(root, '.plugin-master/CHECKLIST.md'));
+    expect(await prompt()).toEqual({});
   });
 
   it('compact with nothing changed: the unchanged-files line, the plan line and the roster, no file bodies', async () => {
