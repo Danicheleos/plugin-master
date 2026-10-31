@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import type { AgentDefinition, HookCallback, HookCallbackMatcher, HookJSONOutput } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentTask } from '@pm/protocol';
 import { buildContext } from '../context/build-context';
@@ -89,6 +89,8 @@ const mtimeOf = (root: string, rel: string) =>
 
 const SUPERSEDE =
   'These copies replace the copies in the system prompt, which are from session start and cannot change mid-session. The summary above may be wrong; verify against these files.';
+/** Space file injected on every prompt when present. */
+const CHECKLIST = '.plugin-master/CHECKLIST.md';
 const CALL_PLAN = 'Call mcp__plan__plan_get before continuing the task.';
 
 /** One hooks object per session: it owns the mtimes at session start. */
@@ -96,7 +98,8 @@ export function createMasterHooks(ctx: MasterHookContext) {
   // The summary drops earlier injections and only the system-prompt copies from session start
   // remain, so every compaction compares with the session-start mtimes. Pinned files are injected
   // only then: a per-prompt injection re-sent STATE.md after each edit by the master itself
-  // (5 copies in one measured session).
+  // (5 copies in one measured session). The exception is CHECKLIST.md, a short file written for
+  // the master to see each turn, so it is injected on every prompt.
   const started = new Map<string, number>();
   const baseline = Promise.all(
     ctx.files.map(async (rel) => {
@@ -157,8 +160,16 @@ export function createMasterHooks(ctx: MasterHookContext) {
     return { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: parts.join('\n\n') } };
   };
 
+  const userPrompt: HookCallback = async (input) => {
+    if (input.hook_event_name !== 'UserPromptSubmit') return {};
+    const text = await readFile(resolveInSpace(ctx.root, CHECKLIST), 'utf8').catch(() => '');
+    if (!text.trim()) return {};
+    return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: text } };
+  };
+
   return {
     PreToolUse: [{ hooks: [createMasterPreToolUse(ctx.agents)] }],
     SessionStart: [{ matcher: 'compact', hooks: [sessionStart] }],
+    UserPromptSubmit: [{ hooks: [userPrompt] }],
   } satisfies Record<string, HookCallbackMatcher[]>;
 }

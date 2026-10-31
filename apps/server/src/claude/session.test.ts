@@ -27,7 +27,7 @@ describe('sessionQueryOptions', () => {
       CLAUDE_CODE_AUTO_COMPACT_WINDOW: '300000',
       CLAUDE_CODE_SUBAGENT_MODEL: 'claude-sonnet-5-5',
     });
-    expect(Object.keys(opts.hooks ?? {}).sort()).toEqual(['PreToolUse', 'SessionStart']);
+    expect(Object.keys(opts.hooks ?? {}).sort()).toEqual(['PreToolUse', 'SessionStart', 'UserPromptSubmit']);
     expect(opts).toMatchObject({
       cwd: '/space',
       permissionMode: 'default',

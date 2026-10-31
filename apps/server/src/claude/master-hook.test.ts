@@ -125,11 +125,11 @@ describe('masterPreToolUse', () => {
     });
   });
 
-  it('registers PreToolUse for every tool and SessionStart on compact, nothing on UserPromptSubmit', () => {
+  it('registers PreToolUse for every tool, SessionStart on compact and UserPromptSubmit', () => {
     const h = createMasterHooks({ root: '/', files: [], tasks: () => [], agents });
     expect(h.PreToolUse).toHaveLength(1);
     expect(h.SessionStart[0]?.matcher).toBe('compact');
-    expect(h).not.toHaveProperty('UserPromptSubmit');
+    expect(h.UserPromptSubmit).toHaveLength(1);
   });
 
   describe('subagent output files', () => {
@@ -162,7 +162,9 @@ describe('context hooks', () => {
     const base = { session_id: 's', transcript_path: '', cwd: root };
     const start = (source: string) =>
       h.SessionStart[0]!.hooks[0]!({ ...base, hook_event_name: 'SessionStart', source } as HookInput, 't', opt);
-    return { root, start };
+    const prompt = () =>
+      h.UserPromptSubmit[0]!.hooks[0]!({ ...base, hook_event_name: 'UserPromptSubmit', prompt: 'hi' } as HookInput, 't', opt);
+    return { root, start, prompt };
   }
   const ctx = (r: unknown) => (r as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput?.additionalContext;
   const bump = (root: string, f: string) => utimes(join(root, f), new Date(), new Date(Date.now() + 5000));
@@ -174,6 +176,19 @@ describe('context hooks', () => {
   const agent1: AgentTask = { id: 'ag1', description: 'check logs', subagentType: 'reader', status: 'running', tokens: 1234, toolUses: 2, taskType: 'local_agent' };
   const bash1: AgentTask = { id: 'bg1', description: 'npm run dev', status: 'running', tokens: 0, toolUses: 0, taskType: 'local_bash' };
   const plan = async () => ({ title: 'Ship v2', phase: 'Write tests' });
+
+  it('UserPromptSubmit injects .plugin-master/CHECKLIST.md as is on every turn, nothing when absent or empty', async () => {
+    const { root, prompt } = await setup({ 'a.md': 'one' });
+    expect(await prompt()).toEqual({});
+    await writeFile(join(root, '.plugin-master/CHECKLIST.md'), '   \n');
+    expect(await prompt()).toEqual({});
+    await writeFile(join(root, '.plugin-master/CHECKLIST.md'), '- [ ] first\n');
+    const expected = { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: '- [ ] first\n' } };
+    expect(await prompt()).toEqual(expected);
+    expect(await prompt()).toEqual(expected);
+    await writeFile(join(root, '.plugin-master/CHECKLIST.md'), '- [x] second');
+    expect(ctx(await prompt())).toBe('- [x] second');
+  });
 
   it('compact with nothing changed: the unchanged-files line, the plan line and the roster, no file bodies', async () => {
     const { start } = await setup({ 'a.md': 'one', 'b.md': 'two' }, [agent1], plan);
