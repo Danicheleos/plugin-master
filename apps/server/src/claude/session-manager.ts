@@ -9,6 +9,7 @@ import {
 } from '@pm/protocol';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { AppError } from '../lib/errors';
+import { loadAgentPresets } from './agent-presets';
 import { buildContext } from '../context/build-context';
 import type { Registry } from '../spaces/registry';
 import {
@@ -256,6 +257,7 @@ export function createSessionManager(
       mode: state.mode,
       model: state.model,
       userSettings,
+      agents: await loadAgentPresets(root),
       resume: state.sessionId ?? undefined,
       canUseTool: permissions.canUseTool(spaceId),
       mcpServers: {

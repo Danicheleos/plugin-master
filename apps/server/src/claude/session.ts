@@ -1,5 +1,6 @@
 import {
   query,
+  type AgentDefinition,
   type Options,
   type McpSdkServerConfigWithInstance,
   type CanUseTool,
@@ -11,6 +12,7 @@ import {
 import type { ChatMode, ChatModel, ContextUsage } from '@pm/protocol';
 import { AsyncQueue } from '../lib/async-queue';
 import { MASTER_HOOKS } from './master-hook';
+import { DEFAULT_AGENT_PRESETS, SUBAGENT_MODEL } from './agent-presets';
 
 export type SessionOptions = {
   cwd: string;
@@ -25,6 +27,8 @@ export type SessionOptions = {
   /** In-process MCP servers and the tools of them that are allowed without asking. */
   mcpServers?: Record<string, McpSdkServerConfigWithInstance>;
   allowedTools?: string[];
+  /** Subagent presets by name (SDK `agents`); the defaults fill the names not given. */
+  agents?: Record<string, AgentDefinition>;
   onMessage: (m: SDKMessage) => void;
   onError: (e: unknown) => void;
 };
@@ -48,12 +52,7 @@ export const MASTER_MODEL = 'claude-opus-5-5';
  * CLI env var `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, which wins over the `autoCompactWindow` setting.
  */
 const MASTER_AUTO_COMPACT_WINDOW = 300_000;
-/**
- * Model of every subagent the master starts. `CLAUDE_CODE_SUBAGENT_MODEL` sets it, and
- * `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` makes the CLI ignore the Agent tool's `model` input and the
- * `model` of agent definitions, so it always applies.
- */
-export const SUBAGENT_MODEL = 'claude-sonnet-5-5';
+export { SUBAGENT_MODEL };
 
 /**
  * `rawMaxTokens` is the resolved auto-compact window (300k under `MASTER_AUTO_COMPACT_WINDOW`; the
@@ -91,7 +90,8 @@ export function sessionQueryOptions(
       ...base,
       CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(MASTER_AUTO_COMPACT_WINDOW),
       CLAUDE_CODE_SUBAGENT_MODEL: SUBAGENT_MODEL,
-      CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1',
+      // inherited FORCE would drop the presets' models and the Agent tool's `model` input
+      CLAUDE_CODE_SUBAGENT_MODEL_FORCE: undefined,
     },
     systemPrompt: {
       type: 'preset',
@@ -104,6 +104,9 @@ export function sessionQueryOptions(
     canUseTool: o.canUseTool,
     mcpServers: o.mcpServers,
     allowedTools: o.allowedTools,
+    // per-call and definition models apply (no CLAUDE_CODE_SUBAGENT_MODEL_FORCE); a space's own
+    // presets are merged over the defaults by the session manager
+    agents: { ...DEFAULT_AGENT_PRESETS, ...o.agents },
     hooks: MASTER_HOOKS,
   };
 }

@@ -3,21 +3,13 @@ import { parse } from 'yaml';
 import type { EvalSuite, EvalSuiteCase } from '@pm/protocol';
 import { resolveInSpace } from '../files/safe-path';
 import { evalDir } from './eval-dir';
+import { asObject, splitFrontmatter } from '../lib/frontmatter';
 
 const MAX_DEPTH = 6;
 const SKIP = new Set(['results', 'mocks', 'traces', 'graders', 'node_modules']);
 
 const text = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
-const asObject = (v: unknown): Record<string, unknown> =>
-  v && typeof v === 'object' && !Array.isArray(v)
-    ? (v as Record<string, unknown>)
-    : {};
-
-/** YAML between the leading `---` lines of a Markdown file; `{}` when absent. */
-function frontmatter(src: string): Record<string, unknown> {
-  const m = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(src);
-  return m ? asObject(parse(m[1])) : {};
-}
+const frontmatter = (src: string) => splitFrontmatter(src).data;
 
 async function readOptional(root: string, rel: string) {
   return readFile(resolveInSpace(root, rel), 'utf8').catch(() => undefined);

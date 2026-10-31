@@ -29,7 +29,6 @@ describe('sessionQueryOptions', () => {
       HOME: '/h',
       CLAUDE_CODE_AUTO_COMPACT_WINDOW: '300000',
       CLAUDE_CODE_SUBAGENT_MODEL: 'claude-sonnet-5-5',
-      CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1',
     });
     expect(opts.hooks).toBe(MASTER_HOOKS);
     expect(opts).toMatchObject({
@@ -38,6 +37,23 @@ describe('sessionQueryOptions', () => {
       settingSources: ['project'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: 'ctx' },
     });
+  });
+
+  it('carries the reader/writer/runner presets and never sets FORCE, even when inherited', () => {
+    const opts = sessionQueryOptions(o, { CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1' });
+    expect(opts.env?.CLAUDE_CODE_SUBAGENT_MODEL_FORCE).toBeUndefined();
+    expect(opts.env?.CLAUDE_CODE_SUBAGENT_MODEL).toBe('claude-sonnet-5-5');
+    expect(Object.keys(opts.agents ?? {}).sort()).toEqual(['reader', 'runner', 'writer']);
+    expect(opts.agents?.reader).toMatchObject({ model: 'haiku', tools: ['Read', 'Grep', 'Glob', 'Bash'] });
+    expect(opts.agents?.writer?.model).toBe('claude-sonnet-5-5');
+    expect(opts.agents?.runner?.tools).toEqual(['Bash', 'Read']);
+  });
+
+  it('keeps default presets for names the session options do not override', () => {
+    const custom = { description: 'd', prompt: 'p', model: 'haiku' };
+    const agents = sessionQueryOptions({ ...o, agents: { reader: custom } }).agents;
+    expect(agents?.reader).toBe(custom);
+    expect(Object.keys(agents ?? {}).sort()).toEqual(['reader', 'runner', 'writer']);
   });
 
   it('loads user and local settings only when userSettings is on', () => {
