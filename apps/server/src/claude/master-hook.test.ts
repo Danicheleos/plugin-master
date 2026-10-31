@@ -128,16 +128,61 @@ describe('context hooks', () => {
   const ctx = (r: unknown) => (r as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput?.additionalContext;
   const bump = (root: string, f: string) => utimes(join(root, f), new Date(), new Date(Date.now() + 5000));
 
-  it('compact SessionStart reads the pinned files fresh and lists the subagents', async () => {
-    const { root, start } = await setup(
-      { 'a.md': 'old text' },
-      [{ id: 'ag1', description: 'check logs', subagentType: 'reader', status: 'running', tokens: 1234, toolUses: 2 }],
-    );
+  const UNCHANGED = (paths: string) => `Unchanged since session start, the system-prompt copies are current: ${paths}.`;
+  const agent1: AgentTask = { id: 'ag1', description: 'check logs', subagentType: 'reader', status: 'running', tokens: 1234, toolUses: 2 };
+
+  it('compact with nothing changed: only the unchanged-files line and the roster, no file bodies', async () => {
+    const { start } = await setup({ 'a.md': 'one', 'b.md': 'two' }, [agent1]);
+    const out = ctx(await start('compact'));
+    expect(out).not.toContain('<file');
+    expect(out).not.toContain('plugin-master context');
+    expect(out).toContain(UNCHANGED('a.md, b.md'));
+    expect(out).toContain('- ag1 | reader | check logs | running | 1234 tokens');
+  });
+
+  it('compact with nothing changed and no roster returns {}', async () => {
+    const { start } = await setup({ 'a.md': 'one' });
+    expect(await start('compact')).toEqual({});
+  });
+
+  it('compact injects a file changed before the compaction and names the others as unchanged', async () => {
+    const { root, start } = await setup({ 'a.md': 'old text', 'b.md': 'two' }, [agent1]);
     await writeFile(join(root, 'a.md'), 'NEW text');
+    await bump(root, 'a.md');
     const out = ctx(await start('compact'));
     expect(out).toContain('<file path="a.md">\nNEW text\n</file>');
-    expect(out).toContain('These are the current files; the copies in the system prompt are from session start.');
-    expect(out).toContain('- ag1 | reader | check logs | running | 1234 tokens');
+    expect(out).not.toContain('<file path="b.md">');
+    expect(out).toContain(UNCHANGED('b.md'));
+    expect(out).toContain('- ag1 | reader');
+  });
+
+  it('compact injects again a file that UserPromptSubmit injected before the compaction', async () => {
+    const { root, start, prompt } = await setup({ 'a.md': 'one', 'b.md': 'two' });
+    await writeFile(join(root, 'a.md'), 'ONE changed');
+    await bump(root, 'a.md');
+    expect(ctx(await prompt())).toContain('ONE changed');
+    expect(await prompt()).toEqual({});
+    const out = ctx(await start('compact'));
+    expect(out).toContain('<file path="a.md">\nONE changed\n</file>');
+    expect(out).toContain(UNCHANGED('b.md'));
+  });
+
+  it('compact names a changed file over 8 KB instead of injecting it', async () => {
+    const { root, start } = await setup({ 'big.md': 'x', 'b.md': 'two' });
+    await writeFile(join(root, 'big.md'), 'y'.repeat(9000));
+    await bump(root, 'big.md');
+    const out = ctx(await start('compact'));
+    expect(out).toContain('big.md changed since session start; re-read it');
+    expect(out).not.toContain('<file');
+    expect(out).toContain(UNCHANGED('b.md'));
+  });
+
+  it('after a compaction UserPromptSubmit does not re-inject a file the compaction already injected', async () => {
+    const { root, start, prompt } = await setup({ 'a.md': 'one', 'b.md': 'two' });
+    await writeFile(join(root, 'a.md'), 'ONE changed');
+    await bump(root, 'a.md');
+    expect(ctx(await start('compact'))).toContain('ONE changed');
+    expect(await prompt()).toEqual({});
   });
 
   it('compact SessionStart gives only the roster without pinned files, nothing for other sources', async () => {

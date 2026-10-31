@@ -71,50 +71,39 @@ const extra = (hookEventName: 'SessionStart' | 'UserPromptSubmit', additionalCon
   hookSpecificOutput: { hookEventName, additionalContext },
 });
 
-/** One hooks object per session: it owns the mtimes seen at the last injection. */
+/** One hooks object per session: it owns the mtimes at session start and at the last injection. */
 export function createMasterHooks(ctx: MasterHookContext) {
-  const seen = new Map<string, number>();
-  const note = async (rel: string) => {
-    const m = await mtimeOf(ctx.root, rel);
-    if (m) seen.set(rel, m.mtime);
-    return m;
-  };
-  const baseline = Promise.all(ctx.files.map(note));
+  // Two baselines. UserPromptSubmit compares with `injected`, so a change is injected once. The
+  // compact hook compares with `started`: the summary drops earlier injections, and only the
+  // system prompt copies from session start remain, so a file injected before is injected again.
+  const started = new Map<string, number>();
+  const injected = new Map<string, number>();
+  const baseline = Promise.all(
+    ctx.files.map(async (rel) => {
+      const m = await mtimeOf(ctx.root, rel);
+      if (m) started.set(rel, m.mtime), injected.set(rel, m.mtime);
+    }),
+  );
 
   const roster = () =>
     [...ctx.tasks()].map(
       (t) => `- ${t.id} | ${t.subagentType ?? '-'} | ${t.description || '-'} | ${t.status} | ${t.tokens} tokens`,
     );
 
-  // After compaction the summary replaces the conversation: files and agent ids are fresh again
-  const sessionStart: HookCallback = async (input) => {
-    if (input.hook_event_name !== 'SessionStart' || input.source !== 'compact') return {};
-    const parts: string[] = [];
-    if (ctx.files.length) {
-      try {
-        const { text } = await buildContext(ctx.root, ctx.files);
-        parts.push(text, 'These are the current files; the copies in the system prompt are from session start.');
-        await Promise.all(ctx.files.map(note));
-      } catch (e) {
-        parts.push(`The pinned files could not be re-read (${e instanceof Error ? e.message : String(e)}); read them again yourself.`);
-      }
-    }
-    const lines = roster();
-    if (lines.length)
-      parts.push(`Subagents of this session (id | type | description | status | last context):\n${lines.join('\n')}`);
-    return parts.length ? extra('SessionStart', parts.join('\n\n')) : {};
-  };
-
-  const userPromptSubmit: HookCallback = async (input) => {
-    if (input.hook_event_name !== 'UserPromptSubmit') return {};
+  /** Files that differ from `since`: whole when small, a re-read line when big. Records every current mtime as injected
+   * (`since` may be `injected` itself: each file is read before it is written). */
+  const changedFiles = async (since: Map<string, number>) => {
     await baseline;
     const small: string[] = [];
     const lines: string[] = [];
+    const unchanged: string[] = [];
     for (const rel of ctx.files) {
-      const before = seen.get(rel);
-      const m = await note(rel);
-      if (!m || m.mtime === before) continue;
-      if (m.size > MAX_INJECTED_BYTES) lines.push(`${rel} changed since session start; re-read it`);
+      const m = await mtimeOf(ctx.root, rel);
+      if (!m) continue;
+      const same = m.mtime === since.get(rel);
+      injected.set(rel, m.mtime);
+      if (same) unchanged.push(rel);
+      else if (m.size > MAX_INJECTED_BYTES) lines.push(`${rel} changed since session start; re-read it`);
       else small.push(rel);
     }
     try {
@@ -122,6 +111,29 @@ export function createMasterHooks(ctx: MasterHookContext) {
     } catch (e) {
       lines.push(`${small.join(', ')} changed but could not be read (${e instanceof Error ? e.message : String(e)}); re-read.`);
     }
+    return { lines, unchanged };
+  };
+
+  // After compaction the summary replaces the conversation: agent ids are fresh again, and so
+  // are the changed files; the unchanged ones are current in the system prompt
+  const sessionStart: HookCallback = async (input) => {
+    if (input.hook_event_name !== 'SessionStart' || input.source !== 'compact') return {};
+    const parts: string[] = [];
+    const rows = roster();
+    if (ctx.files.length) {
+      const { lines, unchanged } = await changedFiles(started);
+      parts.push(...lines);
+      if (unchanged.length && (lines.length || rows.length))
+        parts.push(`Unchanged since session start, the system-prompt copies are current: ${unchanged.join(', ')}.`);
+    }
+    if (rows.length)
+      parts.push(`Subagents of this session (id | type | description | status | last context):\n${rows.join('\n')}`);
+    return parts.length ? extra('SessionStart', parts.join('\n\n')) : {};
+  };
+
+  const userPromptSubmit: HookCallback = async (input) => {
+    if (input.hook_event_name !== 'UserPromptSubmit') return {};
+    const { lines } = await changedFiles(injected);
     return lines.length ? extra('UserPromptSubmit', lines.join('\n\n')) : {};
   };
 
