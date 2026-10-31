@@ -261,6 +261,8 @@ export function createSessionManager(
       userSettings,
       disabledPlugins,
       autoMemory,
+      pinnedFiles: [MASTER_PROMPT_FILE, ...masterContext.filter((f) => f !== MASTER_PROMPT_FILE)],
+      tasks: () => state.tasks.values(),
       agents: await loadAgentPresets(root),
       resume: state.sessionId ?? undefined,
       canUseTool: permissions.canUseTool(spaceId),

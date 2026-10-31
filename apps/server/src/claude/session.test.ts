@@ -6,7 +6,6 @@ import {
   toContextUsage,
   type SessionOptions,
 } from './session';
-import { MASTER_HOOKS } from './master-hook';
 
 const o: SessionOptions = {
   cwd: '/space',
@@ -30,7 +29,7 @@ describe('sessionQueryOptions', () => {
       CLAUDE_CODE_AUTO_COMPACT_WINDOW: '300000',
       CLAUDE_CODE_SUBAGENT_MODEL: 'claude-sonnet-5-5',
     });
-    expect(opts.hooks).toBe(MASTER_HOOKS);
+    expect(Object.keys(opts.hooks ?? {}).sort()).toEqual(['PreToolUse', 'SessionStart', 'UserPromptSubmit']);
     expect(opts).toMatchObject({
       cwd: '/space',
       permissionMode: 'default',

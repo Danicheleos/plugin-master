@@ -12,7 +12,8 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 import type { ChatMode, ChatModel, ContextUsage } from '@pm/protocol';
 import { AsyncQueue } from '../lib/async-queue';
-import { MASTER_HOOKS } from './master-hook';
+import { createMasterHooks } from './master-hook';
+import type { AgentTask } from '@pm/protocol';
 import { DEFAULT_AGENT_PRESETS, SUBAGENT_MODEL } from './agent-presets';
 
 export type SessionOptions = {
@@ -31,6 +32,10 @@ export type SessionOptions = {
   /** Subagent presets by name (SDK `agents`); the defaults fill the names not given. */
   agents?: Record<string, AgentDefinition>;
   /** Plugin ids switched off for this session (flag settings, so also with `settingSources: ['project']`). */
+  /** MASTER.md and the pinned files: re-injected after compaction and when they change. */
+  pinnedFiles?: string[];
+  /** The session's subagents (live), for the roster after compaction. */
+  tasks?: () => Iterable<AgentTask>;
   disabledPlugins?: string[];
   /** false switches Claude auto memory off; default on. */
   autoMemory?: boolean;
@@ -97,6 +102,7 @@ export function sessionQueryOptions(
   o: SessionOptions,
   base: NodeJS.ProcessEnv = process.env,
 ): Options {
+  const agents = { ...DEFAULT_AGENT_PRESETS, ...o.agents };
   return {
     cwd: o.cwd,
     resume: o.resume,
@@ -126,8 +132,8 @@ export function sessionQueryOptions(
     allowedTools: o.allowedTools,
     // per-call and definition models apply (no CLAUDE_CODE_SUBAGENT_MODEL_FORCE); a space's own
     // presets are merged over the defaults by the session manager
-    agents: { ...DEFAULT_AGENT_PRESETS, ...o.agents },
-    hooks: MASTER_HOOKS,
+    agents,
+    hooks: createMasterHooks({ root: o.cwd, files: o.pinnedFiles ?? [], tasks: o.tasks ?? (() => []), agents }),
   };
 }
 
