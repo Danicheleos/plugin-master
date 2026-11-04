@@ -49,6 +49,9 @@ export function useChatContext() {
   return chat;
 }
 
+/** The chat of the surrounding `ChatProvider`, or `null` outside one (e.g. in isolated tests). */
+export const useOptionalChatContext = () => useContext(ChatContext);
+
 /** Runs `cb` on mount and whenever the chat turn goes idle (files, commits and runs may have changed). */
 export function useOnChatIdle(cb: () => void) {
   const { status } = useChatContext();

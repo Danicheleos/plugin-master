@@ -13,6 +13,7 @@ import { useDisclosure } from '@mantine/hooks';
 import type { ChatEvent, TraceToolUse } from '@pm/protocol';
 import { toolKind } from '../evals/describeTool';
 import { ToolCall } from '../evals/TraceFlow';
+import { useFollowedOpen } from '../evals/useFollowedOpen';
 import { RunTraceModal } from '../runs/RunsList';
 import styles from './chat.module.scss';
 
@@ -203,15 +204,16 @@ function Chunk({
   calls,
   sub,
   seen,
-  initiallyOpen,
+  last,
 }: {
   from: number;
   calls: TraceToolUse[];
   sub: Sub;
   seen: ReadonlySet<string>;
-  initiallyOpen: boolean;
+  /** the last chunk is open until the user toggles it; an untouched chunk closes when a new one follows */
+  last: boolean;
 }) {
-  const [open, { toggle }] = useDisclosure(initiallyOpen);
+  const [open, toggle] = useFollowedOpen(last);
   return (
     <div>
       <Button
@@ -266,7 +268,7 @@ function SubagentCalls({
               calls={calls.slice(from, from + CHUNK_CALLS)}
               sub={sub}
               seen={seen}
-              initiallyOpen={k === chunks.length - 1}
+              last={k === chunks.length - 1}
             />
           ))
         ) : (

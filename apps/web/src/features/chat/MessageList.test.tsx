@@ -228,6 +228,8 @@ it('nests a subagent tool calls under its Agent call, collapsed until opened; ol
   expect(screen.queryByText(/needle/)).toBeNull();
   fireEvent.click(sub);
   expect(screen.getAllByText(/needle/).length).toBeGreaterThan(0);
+  const details = screen.getAllByRole('button', { name: 'details' });
+  fireEvent.click(details[details.length - 1]);
   expect(screen.getByText('found it')).toBeTruthy();
 });
 
@@ -298,4 +300,36 @@ it('splits a long subagent block into chunks of CHUNK_CALLS calls, only the last
   fireEvent.click(chunks[0]);
   expect(screen.getByText('/f0.md')).toBeTruthy();
   expect(screen.queryByText('/f50.md')).toBeNull();
+});
+
+it('collapses the previous last chunk when a live subagent grows past a chunk boundary, keeping chunks the user toggled', () => {
+  const events = (n: number): ChatEvent[] => [
+    { kind: 'tool_use', id: 'a1', name: 'Agent', input: {} },
+    ...Array.from({ length: n }, (_, i): ChatEvent => ({
+      kind: 'tool_use',
+      id: `s${i}`,
+      name: 'Read',
+      input: { file_path: `/f${i}.md` },
+      parentToolUseId: 'a1',
+    })),
+  ];
+  const view = (n: number) => (
+    <MantineProvider>
+      <MessageList events={events(n)} />
+    </MantineProvider>
+  );
+  const { rerender } = render(view(CHUNK_CALLS * 2));
+  fireEvent.click(screen.getByRole('button', { name: /1 tool call: Agent/ }));
+  fireEvent.click(screen.getByRole('button', { name: /^▸ Subagent/ }));
+  const chunk = (k: number) =>
+    screen.getAllByRole('button', { name: /^[▸▾] calls / })[k];
+  expect(chunk(0)).toHaveProperty('ariaExpanded', 'false');
+  expect(chunk(1)).toHaveProperty('ariaExpanded', 'true');
+  fireEvent.click(chunk(0)); // the user opens the first chunk
+  rerender(view(CHUNK_CALLS * 2 + 5));
+  expect(chunk(0)).toHaveProperty('ariaExpanded', 'true'); // user choice kept
+  expect(chunk(1)).toHaveProperty('ariaExpanded', 'false'); // no longer last
+  expect(chunk(2)).toHaveProperty('ariaExpanded', 'true'); // the new last chunk
+  expect(screen.queryByText('/f50.md')).toBeNull();
+  expect(screen.getByText('/f100.md')).toBeTruthy();
 });

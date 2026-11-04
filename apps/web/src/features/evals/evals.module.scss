@@ -213,3 +213,18 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.detail {
+  padding: 4px var(--mantine-spacing-xs);
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+}
+
+.detailRow {
+  white-space: pre-wrap;
+}
+
+.detailNested {
+  padding-left: var(--mantine-spacing-md);
+  border-left: 1px solid var(--mantine-color-default-border);
+}

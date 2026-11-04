@@ -194,6 +194,29 @@ describe('TraceFlow byPrompt', () => {
     expect(screen.getByText(/1 entries/)).toBeTruthy();
   });
 
+  it('on a live refetch keeps groups the user toggled and moves the default to the new last group', () => {
+    const view = (t: Trace) => (
+      <MantineProvider>
+        <TraceFlow trace={t} byPrompt />
+      </MantineProvider>
+    );
+    const { rerender } = render(view(prompted));
+    const heads = () => screen.getAllByRole('button', { name: /^[▸▾]$/ });
+    fireEvent.click(heads()[0]); // the user opens the first group
+    rerender(
+      view({
+        ...prompted,
+        turns: [...prompted.turns, turn('c', [], 'Polished')],
+        prompts: [...prompted.prompts!, { text: 'Ship it', turn: 2 }],
+      }),
+    );
+    expect(heads()[0]).toHaveProperty('ariaExpanded', 'true'); // toggled by the user
+    expect(heads()[1]).toHaveProperty('ariaExpanded', 'false'); // no longer the last group
+    expect(heads()[2]).toHaveProperty('ariaExpanded', 'true'); // the new last group
+    expect(screen.getByText('skill fired: my-skill')).toBeTruthy();
+    expect(screen.getByText('Polished')).toBeTruthy();
+  });
+
   it('keeps the plain flow without byPrompt (evals traces)', () => {
     render(
       <MantineProvider>

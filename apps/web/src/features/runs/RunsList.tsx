@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ActionIcon, Badge, Group, Table, Text, Tooltip } from '@mantine/core';
-import { useOnChatIdle } from '../chat/ChatContext';
+import { useOnChatIdle, useOptionalChatContext } from '../chat/ChatContext';
 import { TraceDialog } from '../evals/TraceView';
 import { cost, seconds, stamp } from '../evals/format';
-import { runsKey, useRunTrace, useRuns } from './hooks';
+import { runsKey, useLiveRefetch, useRunTrace, useRuns } from './hooks';
 
 function ago(iso: string) {
   const s = (Date.now() - Date.parse(iso)) / 1000;
@@ -26,7 +26,14 @@ export function RunTraceModal({
   title: string;
   onClose: () => void;
 }) {
-  const { data, error } = useRunTrace(spaceId, runId);
+  const { data, error, refetch } = useRunTrace(spaceId, runId);
+  // live while the chat streams this session; same query key, so data (and the dialog's UI state) stays
+  const chat = useOptionalChatContext();
+  const live = chat?.sessionId === runId;
+  useLiveRefetch(() => void refetch(), {
+    tick: live ? chat.events.length : 0,
+    running: live && chat.status === 'running',
+  });
   return (
     <TraceDialog
       byPrompt

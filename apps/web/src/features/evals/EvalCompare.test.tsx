@@ -175,7 +175,9 @@ describe('TraceModal', () => {
       screen.getByRole('img', { name: /Context per model call/ }),
     ).toBeTruthy();
     expect(screen.getByText(/context 500/)).toBeTruthy(); // nested subagent turn
-    fireEvent.click(screen.getByText(/Task/));
+    expect(screen.queryByText('report')).toBeNull(); // details mount only when opened
+    fireEvent.click(screen.getByRole('button', { name: 'details' }));
     expect(screen.getByText('report')).toBeTruthy();
+    expect(screen.getByText('prompt:')).toBeTruthy(); // JSON input as key/value rows
   });
 });

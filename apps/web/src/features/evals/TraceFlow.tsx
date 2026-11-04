@@ -18,6 +18,8 @@ import type {
 import { describeTool, toolKind, type ToolKind } from './describeTool';
 import { cost, seconds, tokens } from './format';
 import styles from './evals.module.scss';
+import { useFollowedOpen } from './useFollowedOpen';
+import { DetailView } from './DetailView';
 
 const COLOR: Record<ToolKind, string> = {
   skill: 'grape',
@@ -158,16 +160,18 @@ export function ToolCall({
           {action}
         </Group>
         {sub && <SubagentLine s={sub} />}
-        <Collapse expanded={open}>
-          <Code block fz="xs">
-            {t.input}
-          </Code>
-          {t.result && (
-            <Code block fz="xs" c={err ? 'red' : undefined}>
-              {t.result.preview || '(empty)'}
-            </Code>
-          )}
-        </Collapse>
+        {/* mounted (and parsed) only while open */}
+        {open && (
+          <>
+            <DetailView text={t.input} />
+            {t.result && (
+              <DetailView
+                text={t.result.preview}
+                color={err ? 'red' : undefined}
+              />
+            )}
+          </>
+        )}
       </Block>
       {t.turns && (
         <div className={styles.lane}>
@@ -378,14 +382,15 @@ function PromptGroup({
   text,
   start,
   turns,
-  initiallyOpen,
+  byDefault,
 }: {
   text?: string;
   start: number;
   turns: TraceTurn[];
-  initiallyOpen: boolean;
+  /** the default (last group with turns); followed until the user toggles the group */
+  byDefault: boolean;
 }) {
-  const [open, { toggle }] = useDisclosure(initiallyOpen);
+  const [open, toggle] = useFollowedOpen(byDefault);
   return (
     <div className={styles.step}>
       <Block>
@@ -460,7 +465,7 @@ export function TraceFlow({
               text={g.text}
               start={g.start}
               turns={g.turns}
-              initiallyOpen={k === openGroup}
+              byDefault={k === openGroup}
             />
           ))
         ) : (
