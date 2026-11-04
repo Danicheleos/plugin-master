@@ -20,12 +20,12 @@ export function Comparison({ data }: { data: ExperimentComparison }) {
         </Table.Thead>
         <Table.Tbody>
           {data.cases.map((c) => {
-            const d = c.score !== undefined && c.baselineScore !== undefined ? c.score - c.baselineScore : undefined;
+            const d = c.delta;
             return (
-              <Table.Tr key={c.case}>
-                <Table.Td>{c.case} {c.flaky && <FlakyMark />}</Table.Td>
-                <Table.Td>{score(c.baselineScore)}</Table.Td>
-                <Table.Td>{score(c.score)}</Table.Td>
+              <Table.Tr key={c.name}>
+                <Table.Td>{c.name} {(c.from?.flaky || c.to?.flaky) && <FlakyMark />}</Table.Td>
+                <Table.Td>{score(c.from?.score)}</Table.Td>
+                <Table.Td>{score(c.to?.score)}</Table.Td>
                 <Table.Td c={d === undefined || d === 0 ? 'dimmed' : d > 0 ? 'green' : 'red'}>{delta(d)}</Table.Td>
               </Table.Tr>
             );

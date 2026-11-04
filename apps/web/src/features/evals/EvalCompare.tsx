@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { MultiSelect, Table, Text } from '@mantine/core';
-import type { EvalCase, EvalSuiteEntry } from '@pm/protocol';
-import { armStats, changedGraders, type ArmStats } from './compare';
+import { caseSide, type CaseSide, type EvalCase, type EvalSuiteEntry } from '@pm/protocol';
+import { changedGraders } from './compare';
 import { cost, delta, num, score, stamp, tokens } from './format';
 import { useEvalRun, useEvalRuns, useEvalSuites } from './hooks';
 import styles from './evals.module.scss';
@@ -13,8 +13,8 @@ export const ABLATION_BASELINE = 'ablation';
 const diff = (a?: number, b?: number, fmt: (n: number) => string = num) =>
   a === undefined || b === undefined ? '-' : `${a - b > 0 ? '+' : ''}${fmt(a - b)}`;
 
-const METRICS: { label: string; get: (s: ArmStats) => number | undefined; fmt: (n?: number) => string }[] = [
-  { label: 'Cost', get: (s) => s.cost, fmt: cost },
+const METRICS: { label: string; get: (s: CaseSide) => number | undefined; fmt: (n?: number) => string }[] = [
+  { label: 'Cost', get: (s) => s.costUsd, fmt: cost },
   { label: 'Turns', get: (s) => s.turns, fmt: num },
   { label: 'Context', get: (s) => s.maxContext, fmt: tokens },
   { label: 'Model calls', get: (s) => s.modelCalls, fmt: num },
@@ -118,8 +118,8 @@ function BaselineTable({
   const base = useEvalRun(spaceId, baseline, !single, baseline !== '');
   const baseCases = base.data?.result.cases;
   const rows = cases.flatMap((c) => {
-    const b = choice === ABLATION ? c.arms.without : baseCases?.find((x) => x.name === c.name)?.arms.with;
-    return b ? [{ c, a: armStats(c.arms.with), b: armStats(b) }] : [];
+    const b = choice === ABLATION ? { ...c, arms: { with: c.arms.without, without: [] }, aggregates: {} } : baseCases?.find((x) => x.name === c.name);
+    return b ? [{ c, a: caseSide(c), b: caseSide(b) }] : [];
   });
   return (
     <>

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { SuiteDelta } from './stats.js';
+import type { CaseCompare, SuiteDelta } from './stats.js';
 
 /** `<out>/pm-meta.json`: what the eval ran on, written by the server before each invocation. */
 export const PmMetaSchema = z.object({
@@ -42,24 +42,7 @@ export type VersionEntry = {
 };
 export type VersionsResponse = { commits: VersionEntry[] };
 
-export type CaseSide = {
-  runId?: string;
-  /** Trace to open: the first failed `with` run, else the first one (1-based, like the trace route). */
-  arm?: 'with' | 'without';
-  n?: number;
-  score?: number;
-  costUsd?: number;
-  maxContext?: number;
-  turns?: number;
-  /** `with` arm runs behind the score, and the sd of their scores (absent with fewer than 2). */
-  runs?: number;
-  sd?: number;
-  /** Runs of this case disagree (pass and fail, or a large sd). */
-  flaky?: boolean;
-  /** Every `with` arm run passed. */
-  passed?: boolean;
-};
-export type CaseCompare = { name: string; from?: CaseSide; to?: CaseSide; delta?: number };
+export type { CaseCompare, CaseSide } from './stats.js';
 export type VersionSide = {
   hash: string;
   groupId?: string;

@@ -178,7 +178,7 @@ export async function descriptionBody(d: LoopDeps, spaceId: string, root: string
       base: e0.base,
       evalRunIds: [...new Set([origRun, best.evalRunId].flatMap((x) => x ?? []))],
       suite: comparison.suite,
-      cases: comparison.cases.map(({ case: name, delta, n, flaky }) => ({ case: name, delta, n, flaky })),
+      cases: comparison.cases.map(({ name, delta, from, to }) => ({ case: name, delta, n: to?.runs, flaky: !!(from?.flaky || to?.flaky) })),
       holdout: { before: orig.holdout, after: best.holdout },
       lesson: `Candidate ${bestIndex}: train ${f(orig.train)} -> ${f(best.train)}, holdout ${f(orig.holdout)} -> ${f(best.holdout)} (${verdict}).`,
       costUsd: banked,

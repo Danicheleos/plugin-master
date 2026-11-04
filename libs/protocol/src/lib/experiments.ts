@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { GitDiff } from './git.js';
-import { SuiteDeltaSchema } from './stats.js';
+import { CaseCompareSchema, SuiteDeltaSchema } from './stats.js';
 
 export const LOOP_STAGES = ['hypothesis', 'execute', 'eval', 'analyze', 'propose'] as const;
 export type LoopStage = (typeof LOOP_STAGES)[number];
@@ -15,25 +15,23 @@ export const StageInfoSchema = z.object({
 });
 export type StageInfo = z.infer<typeof StageInfoSchema>;
 
+/** Stored rows from before the shared case summary: `{case, score, baselineScore, n, sd, baselineN, baselineSd, delta, flaky}`. */
+function oldCaseRow(row: unknown): unknown {
+  if (typeof row !== 'object' || row === null || !('case' in row)) return row;
+  const r = row as Record<string, unknown>;
+  return {
+    name: r.case,
+    from: { score: r.baselineScore, runs: r.baselineN, sd: r.baselineSd },
+    to: { score: r.score, runs: r.n, sd: r.sd, flaky: r.flaky },
+    delta: r.delta,
+  };
+}
+
 /** Per-case score of the experiment's eval vs the baseline (latest result in the space). */
 export const ExperimentComparisonSchema = z.object({
   /** null: the space had no earlier eval result of these cases */
   baseline: z.object({ runId: z.string() }).nullable(),
-  cases: z.array(
-    z.object({
-      case: z.string(),
-      score: z.number().optional(),
-      baselineScore: z.number().optional(),
-      /** runs per side, and the sd of their scores (absent with fewer than 2 runs) */
-      n: z.number().int().optional(),
-      sd: z.number().optional(),
-      baselineN: z.number().int().optional(),
-      baselineSd: z.number().optional(),
-      delta: z.number().optional(),
-      /** runs of this case disagree (pass and fail, or a large sd) on either side */
-      flaky: z.boolean().optional(),
-    }),
-  ),
+  cases: z.array(z.preprocess(oldCaseRow, CaseCompareSchema)),
   /** absent in records from before the stats core */
   suite: SuiteDeltaSchema.optional(),
 });

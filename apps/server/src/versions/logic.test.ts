@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { PmMeta, VersionSide } from '@pm/protocol';
-import { compareCases, evaluateGate, resolveCommit, type LogEntry } from './logic';
+import { compareCases, type PmMeta, type VersionSide } from '@pm/protocol';
+import { evaluateGate, resolveCommit, type LogEntry } from './logic';
 
 const log: LogEntry[] = [
   { hash: 'c3', tree: 't3', time: 3000 },
@@ -24,18 +24,6 @@ describe('resolveCommit', () => {
     expect(resolveCommit(undefined, iso(2500), log)).toEqual({ hash: 'c2', approx: true, dirty: false });
     expect(resolveCommit(undefined, iso(500), log)).toBeUndefined();
     expect(resolveCommit(undefined, undefined, log)).toBeUndefined();
-  });
-});
-
-describe('compareCases', () => {
-  it('joins by name with deltas', () => {
-    const rows = compareCases(
-      [{ name: 'a', score: 0.5 }, { name: 'b', score: 1 }],
-      [{ name: 'b', score: 0.75 }, { name: 'c' }],
-    );
-    expect(rows.map((r) => [r.name, r.delta])).toEqual([['a', undefined], ['b', -0.25], ['c', undefined]]);
-    expect(rows[0]).not.toHaveProperty('to');
-    expect(rows[1].from).toEqual({ score: 1 });
   });
 });
 

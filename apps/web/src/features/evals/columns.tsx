@@ -1,13 +1,14 @@
 import type { ComponentProps, MouseEvent, ReactNode } from 'react';
 import { Anchor, Badge, Group, Text, Tooltip } from '@mantine/core';
-import type {
-  EvalCaseEntry,
-  EvalCaseRun,
-  EvalGroup,
-  EvalRunSummary,
+import {
+  caseSide,
+  type EvalCaseEntry,
+  type EvalCaseRun,
+  type EvalGroup,
+  type EvalRunSummary,
 } from '@pm/protocol';
 import type { Column } from './DataTable';
-import { armStats, type RepCase } from './compare';
+import type { RepCase } from './compare';
 import { METRICS, type Metrics } from './metrics';
 import {
   cost,
@@ -284,7 +285,7 @@ export function runCaseColumns(ctx: {
   onOpenFile?: (path: string) => void;
   onReport: (c: RepCase) => (() => void) | undefined;
 }): Column<RepCase>[] {
-  const stats = (c: RepCase) => armStats(c.arms.with);
+  const stats = (c: RepCase) => caseSide(c);
   return [
     {
       id: 'case',
@@ -361,8 +362,8 @@ export function runCaseColumns(ctx: {
     {
       id: 'cost',
       label: 'Cost',
-      render: (c) => cost(stats(c).cost),
-      sortValue: (c) => stats(c).cost,
+      render: (c) => cost(stats(c).costUsd),
+      sortValue: (c) => stats(c).costUsd,
     },
     {
       id: 'result',

@@ -1,25 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { caseRegressed, caseStats, pairedDelta, sd, suiteDelta } from './stats';
-
-describe('caseStats', () => {
-  it('gives n, mean and sd', () => {
-    const s = caseStats([{ score: 1 }, { score: 0.5 }, { score: 0 }]);
-    expect(s).toMatchObject({ n: 3, mean: 0.5, sd: 0.5, flaky: true });
-  });
-  it('one run has no sd and is not flaky; passed stands in for a missing score', () => {
-    expect(caseStats([{ score: 0.8 }])).toEqual({ n: 1, mean: 0.8, flaky: false });
-    expect(caseStats([{ passed: true }, { passed: true }])).toMatchObject({ n: 2, mean: 1, sd: 0, flaky: false });
-  });
-  it('flaky when runs both pass and fail, even with close scores', () => {
-    expect(caseStats([{ score: 0.5, passed: true }, { score: 0.45, passed: false }]).flaky).toBe(true);
-  });
-  it('no runs', () => {
-    expect(caseStats([])).toEqual({ n: 0, flaky: false });
-  });
-  it('sd needs two values', () => {
-    expect(sd([1])).toBeUndefined();
-  });
-});
+import { caseRegressed, pairedDelta, suiteDelta } from './stats';
 
 describe('pairedDelta', () => {
   it('needs both sides', () => {

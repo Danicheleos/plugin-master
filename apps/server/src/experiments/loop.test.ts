@@ -306,8 +306,8 @@ describe('happy path', () => {
       comparison: {
         baseline: { runId: 'base1' },
         cases: [
-          { case: 'c1', score: 1, baselineScore: 0.5 },
-          { case: 'c2', score: 1, baselineScore: 1 },
+          { name: 'c1', to: { score: 1 }, from: { score: 0.5 } },
+          { name: 'c2', to: { score: 1 }, from: { score: 1 } },
         ],
       },
     });

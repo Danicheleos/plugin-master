@@ -160,7 +160,7 @@ export function createExperimentLoop(d: LoopDeps) {
         base: e0.base,
         evalRunIds: [...(baseline ? [baseline.runId] : []), runId],
         suite: comparison.suite,
-        cases: comparison.cases.map(({ case: name, delta, n, flaky }) => ({ case: name, delta, n, flaky })),
+        cases: comparison.cases.map(({ name, delta, from, to }) => ({ case: name, delta, n: to?.runs, flaky: !!(from?.flaky || to?.flaky) })),
         ...(a.result.lesson && { lesson: a.result.lesson }),
         costUsd: k.e.costUsd ?? 0,
       }).catch(d.onError);

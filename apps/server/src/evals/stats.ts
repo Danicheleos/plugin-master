@@ -1,34 +1,4 @@
-import type { SuiteDelta } from '@pm/protocol';
-
-/** Run scores of one case on one side; a run without a score counts 1/0 by `passed`. */
-export type RunScore = { score?: number; passed?: boolean };
-
-export type CaseStats = { n: number; mean?: number; sd?: number; flaky: boolean };
-
-/** Runs whose scores spread more than this (sample sd) count as flaky. */
-export const FLAKY_SD = 0.25;
-
-const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-
-/** Sample standard deviation; undefined with fewer than 2 values. */
-export function sd(xs: number[]): number | undefined {
-  if (xs.length < 2) return undefined;
-  const m = avg(xs);
-  return Math.sqrt(xs.reduce((a, x) => a + (x - m) ** 2, 0) / (xs.length - 1));
-}
-
-/** n, mean and sd of a case's runs; flaky = runs both pass and fail, or sd above FLAKY_SD. */
-export function caseStats(runs: RunScore[]): CaseStats {
-  const scores = runs.flatMap((r) => (r.score !== undefined ? [r.score] : r.passed === undefined ? [] : [Number(r.passed)]));
-  const s = sd(scores);
-  const verdicts = new Set(runs.flatMap((r) => (r.passed === undefined ? [] : [r.passed])));
-  return {
-    n: scores.length,
-    ...(scores.length && { mean: avg(scores) }),
-    ...(s !== undefined && { sd: s }),
-    flaky: verdicts.size > 1 || (s ?? 0) > FLAKY_SD,
-  };
-}
+import { mean, sd, type SuiteDelta } from '@pm/protocol';
 
 /** Paired delta (head - base) of a case; needs a mean on both sides. */
 export const pairedDelta = (base?: number, head?: number) =>
@@ -62,7 +32,7 @@ export function suiteDelta(deltas: (number | undefined)[]): SuiteDelta {
   const d = deltas.filter((x): x is number => x !== undefined);
   const n = d.length;
   if (n < 2) return { cases: n, ...(n && { mean: d[0] }), verdict: 'inconclusive' };
-  const m = avg(d);
+  const m = mean(d)!;
   let ci: [number, number];
   if (n < BOOTSTRAP_MIN) {
     const h = T95[n - 2] * (sd(d)! / Math.sqrt(n));

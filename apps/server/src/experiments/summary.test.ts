@@ -16,8 +16,8 @@ describe('compare', () => {
   it('adds n, sd, delta, flaky and a suite verdict', () => {
     const base = { runId: 'b', result: result({ a: [0], b: [0, 1] }) };
     const c = compare(result({ a: [1, 1, 1], b: [1] }), base);
-    expect(c.cases[0]).toMatchObject({ case: 'a', score: 1, baselineScore: 0, n: 3, baselineN: 1, delta: 1, flaky: false });
-    expect(c.cases[1]).toMatchObject({ case: 'b', delta: 0.5, flaky: true, baselineSd: expect.any(Number) });
+    expect(c.cases[0]).toMatchObject({ name: 'a', from: { score: 0, runs: 1 }, to: { score: 1, runs: 3, flaky: false }, delta: 1 });
+    expect(c.cases[1]).toMatchObject({ name: 'b', delta: 0.5, from: { flaky: true, sd: expect.any(Number) } });
     expect(c.suite?.cases).toBe(2);
   });
   it('a single-run win on few cases is inconclusive, not an improvement', () => {

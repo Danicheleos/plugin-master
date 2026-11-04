@@ -1,57 +1,9 @@
-import type { EvalCase, EvalRunResult } from '@pm/protocol';
+import type { CaseSide, EvalCase } from '@pm/protocol';
 
-export type ArmStats = {
-  runs: number;
-  score?: number;
-  /** Including the judge. */
-  cost?: number;
-  turns?: number;
-  maxContext?: number;
-  modelCalls?: number;
-  toolCalls?: number;
-  /** Pass rate of each grader over the runs. */
-  graders: Record<string, number>;
-};
-
-const mean = (xs: (number | undefined)[]) => {
-  const v = xs.filter((x): x is number => x !== undefined);
-  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : undefined;
-};
-
-/** Means over the runs of one arm; trace metrics only count runs that have a trace. */
-export function armStats(runs: EvalRunResult[]): ArmStats {
-  const names = new Set(runs.flatMap((r) => r.graders.map((g) => g.name)));
-  return {
-    runs: runs.length,
-    score: mean(runs.map((r) => r.score)),
-    cost: mean(
-      runs.map((r) =>
-        r.costUsd === undefined ? undefined : r.costUsd + (r.judgeCostUsd ?? 0),
-      ),
-    ),
-    turns: mean(runs.map((r) => r.traceMetrics?.numTurns ?? r.turns)),
-    maxContext: mean(runs.map((r) => r.traceMetrics?.maxContext)),
-    modelCalls: mean(runs.map((r) => r.traceMetrics?.modelCalls)),
-    toolCalls: mean(runs.map((r) => r.traceMetrics?.toolCallsTotal)),
-    graders: Object.fromEntries(
-      [...names].map((n) => [
-        n,
-        mean(
-          runs.map((r) => {
-            const g = r.graders.find((x) => x.name === n);
-            return g ? Number(g.passed === true) : undefined;
-          }),
-        ) ?? 0,
-      ]),
-    ),
-  };
-}
-
-/** Graders whose pass rate differs between two arms (a grader missing on one side counts as changed). */
-export function changedGraders(a: ArmStats, b: ArmStats): string[] {
-  return [
-    ...new Set([...Object.keys(a.graders), ...Object.keys(b.graders)]),
-  ].filter((n) => a.graders[n] !== b.graders[n]);
+/** Graders whose pass rate differs between two sides (a grader missing on one side counts as changed). */
+export function changedGraders(a: CaseSide, b: CaseSide): string[] {
+  const [x, y] = [a.graders ?? {}, b.graders ?? {}];
+  return [...new Set([...Object.keys(x), ...Object.keys(y)])].filter((n) => x[n] !== y[n]);
 }
 
 /** A case row of one repetition (`rep`, 1-based, of `of`); `arms` hold only that repetition. */

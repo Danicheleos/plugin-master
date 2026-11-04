@@ -1,6 +1,7 @@
 import {
+  caseSide,
+  compareCases,
   type CaseSide,
-  type EvalCase,
   type EvalGroup,
   type VersionEntry,
   type VersionSide,
@@ -11,12 +12,11 @@ import {
 } from '@pm/protocol';
 import { evalDir } from '../evals/eval-dir';
 import { groupRuns, type RunInput } from '../evals/groups';
-import { loadRuns, mean, readMerged } from '../evals/results';
-import { caseStats } from '../evals/stats';
+import { loadRuns, readMerged } from '../evals/results';
 import { readSuite } from '../evals/suite';
 import { inRepo } from '../git/service';
 import { AppError } from '../lib/errors';
-import { compareCases, contextBytes, evaluateGate, resolveCommit, suiteOf, type LogEntry } from './logic';
+import { contextBytes, evaluateGate, resolveCommit, suiteOf, type LogEntry } from './logic';
 import { readMeta } from './sidecar';
 
 /** Commits scanned to map runs to commits; the list shows the first `limit`. */
@@ -124,29 +124,13 @@ export async function listVersions(root: string, limit: number): Promise<Version
   return { commits: commits.reverse().slice(0, limit) };
 }
 
-const side = (c: EvalCase): CaseSide => {
-  const w = c.arms.with;
-  const failed = w.findIndex((x) => x.passed !== true);
-  const st = caseStats(w);
-  return {
-    ...(c.runId && w.length && { runId: c.runId, arm: 'with' as const, n: Math.max(failed, 0) + 1 }),
-    score: c.aggregates.score ?? mean(w.map((x) => x.score)),
-    costUsd: mean(w.map((x) => (x.costUsd === undefined ? undefined : x.costUsd + (x.judgeCostUsd ?? 0)))),
-    maxContext: mean(w.map((x) => x.traceMetrics?.maxContext)),
-    turns: mean(w.map((x) => x.traceMetrics?.numTurns ?? x.turns)),
-    ...(w.length && { runs: w.length, flaky: st.flaky }),
-    ...(st.sd !== undefined && { sd: st.sd }),
-    passed: w.length ? w.every((x) => x.passed === true) : undefined,
-  };
-};
-
 /** The latest non-partial merged group of a commit: its cases and what it was matched by. */
 async function commitCases(root: string, hash: string, groups: Map<string, CommitGroup[]>) {
   const pick = groups.get(hash)?.find((x) => !x.group.partial);
   let cases: (CaseSide & { name: string })[] = [];
   if (pick) {
     try {
-      cases = (await readMerged(root, pick.group)).cases.map((c) => ({ name: c.name, ...side(c) }));
+      cases = (await readMerged(root, pick.group)).cases.map((c) => ({ name: c.name, ...caseSide(c) }));
     } catch {
       // unreadable run: no data for this commit
     }

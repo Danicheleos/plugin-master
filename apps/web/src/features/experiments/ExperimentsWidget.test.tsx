@@ -25,7 +25,7 @@ const ready = {
   status: 'ready',
   costUsd: 1.5,
   plan: { title: 'Shorter prompt', rationale: 'Because', expectedEffect: [], files: [] },
-  comparison: { baseline: { runId: 'r' }, cases: [{ case: 'c1', score: 1, baselineScore: 0.5 }] },
+  comparison: { baseline: { runId: 'r' }, cases: [{ name: 'c1', from: { score: 0.5 }, to: { score: 1 }, delta: 0.5 }] },
   analysis: { verdict: 'improve', reasons: ['faster'], cases: [], recommendation: 'merge' },
   stateProposal: 'Keep the short prompt',
 };

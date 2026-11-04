@@ -1,7 +1,6 @@
 import {
   parseSkill,
   type CaseCompare,
-  type CaseSide,
   type GateRule,
   type GateStatus,
   type PmMeta,
@@ -38,26 +37,6 @@ export function resolveCommit(
   const t = Date.parse(startedAt ?? '');
   const hit = Number.isNaN(t) ? undefined : log.find((c) => c.time <= t);
   return hit && { hash: hit.hash, approx: true, dirty: false };
-}
-
-/** Per-case rows over the union of names (`from` order first); `delta` needs both scores. */
-export function compareCases(
-  from: (CaseSide & { name: string })[],
-  to: (CaseSide & { name: string })[],
-): CaseCompare[] {
-  const side = ({ name: _n, ...s }: CaseSide & { name: string }): CaseSide => s;
-  const f = new Map(from.map((c) => [c.name, c]));
-  const t = new Map(to.map((c) => [c.name, c]));
-  return [...new Set([...f.keys(), ...t.keys()])].map((name) => {
-    const a = f.get(name);
-    const b = t.get(name);
-    return {
-      name,
-      ...(a && { from: side(a) }),
-      ...(b && { to: side(b) }),
-      ...(a?.score !== undefined && b?.score !== undefined && { delta: b.score - a.score }),
-    };
-  });
 }
 
 /** Suite-level paired delta over the cases that have a score on both versions. */

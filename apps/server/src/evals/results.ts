@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import {
   EvalResultSchema,
+  mean,
   type EvalGroup,
   type EvalGroupResponse,
   type EvalResult,
@@ -126,10 +127,7 @@ export async function loadRuns(root: string): Promise<RunInput[]> {
   );
 }
 
-export const mean = (xs: (number | undefined)[]) => {
-  const v = xs.filter((x): x is number => x !== undefined);
-  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : undefined;
-};
+export { mean };
 
 /** Mean metrics of one arm's runs; `score`/`passRate` prefer the harness' aggregates. */
 function armMetrics(arm: EvalResult['cases'][number]['arms']['with'], score?: number, passRate?: number) {

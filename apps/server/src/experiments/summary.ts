@@ -1,11 +1,11 @@
-import type { EvalCase, EvalResult, ExperimentComparison, SuiteDelta, Trace } from '@pm/protocol';
-import { mean, readRunTrace } from '../evals/results';
-import { caseStats, pairedDelta, suiteDelta } from '../evals/stats';
+import { caseSide, compareCases, type EvalCase, type EvalResult, type ExperimentComparison, type SuiteDelta, type Trace } from '@pm/protocol';
+import { readRunTrace } from '../evals/results';
+import { suiteDelta } from '../evals/stats';
 import { cut } from '../lib/text';
 
 const fmt = (n: number | undefined) => (n === undefined ? 'n/a' : n.toFixed(2));
 
-export const caseScore = (c: EvalCase) => c.aggregates.score ?? mean(c.arms.with.map((r) => r.score));
+export const caseScore = (c: EvalCase) => caseSide(c).score;
 
 /** A case with a failed or errored plugin-arm run. */
 export const failedCase = (c: EvalCase) => c.arms.with.some((r) => r.passed === false || !!r.error);
@@ -26,24 +26,9 @@ export function summarizeEval(r: EvalResult, limit = 4000): string {
 }
 
 export function compare(result: EvalResult, baseline?: { runId: string; result: EvalResult }): ExperimentComparison {
-  const base = new Map(baseline?.result.cases.map((c) => [c.name, c]));
-  const cases = result.cases.map((c) => {
-    const b = base.get(c.name);
-    const [h, o] = [caseStats(c.arms.with), b && caseStats(b.arms.with)];
-    const score = caseScore(c);
-    const baselineScore = b && caseScore(b);
-    return {
-      case: c.name,
-      score,
-      baselineScore,
-      n: h.n,
-      sd: h.sd,
-      baselineN: o?.n,
-      baselineSd: o?.sd,
-      delta: pairedDelta(baselineScore, score),
-      flaky: h.flaky || !!o?.flaky,
-    };
-  });
+  const names = new Set(result.cases.map((c) => c.name));
+  const side = (cases: EvalCase[]) => cases.map((c) => ({ name: c.name, ...caseSide(c) }));
+  const cases = compareCases(side(baseline?.result.cases.filter((c) => names.has(c.name)) ?? []), side(result.cases));
   return {
     baseline: baseline ? { runId: baseline.runId } : null,
     cases,
@@ -59,7 +44,7 @@ export const comparisonText = (c: ExperimentComparison) =>
     c.baseline ? `Baseline: ${c.baseline.runId}` : 'No baseline (the space has no earlier eval of these cases).',
     ...c.cases.map(
       (x) =>
-        `- ${x.case}: with change ${fmt(x.score)}, baseline ${fmt(x.baselineScore)}${x.flaky ? ' (flaky: runs disagree)' : ''}`,
+        `- ${x.name}: with change ${fmt(x.to?.score)}, baseline ${fmt(x.from?.score)}${x.from?.flaky || x.to?.flaky ? ' (flaky: runs disagree)' : ''}`,
     ),
     ...(c.suite ? [`Suite: ${suiteText(c.suite)}`] : []),
   ].join('\n');
