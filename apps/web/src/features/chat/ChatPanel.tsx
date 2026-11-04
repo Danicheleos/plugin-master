@@ -33,7 +33,12 @@ const ChatInput = memo(function ChatInput({
     setText('');
   };
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' && !touch && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (
+      e.key === 'Enter' &&
+      !touch &&
+      !e.shiftKey &&
+      !e.nativeEvent.isComposing
+    ) {
       e.preventDefault();
       submit();
     }
@@ -45,7 +50,11 @@ const ChatInput = memo(function ChatInput({
         flex={1}
         value={text}
         rows={3}
-        placeholder={touch ? 'Message' : 'Message (Enter to send, Shift+Enter for a new line)'}
+        placeholder={
+          touch
+            ? 'Message'
+            : 'Message (Enter to send, Shift+Enter for a new line)'
+        }
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
       />
@@ -96,7 +105,11 @@ export function ChatPanel({ spaceId }: { spaceId: string }) {
         missingContext={chat.missingContext}
         onNewSession={chat.reset}
       />
-      <MessageList events={chat.events} />
+      <MessageList
+        events={chat.events}
+        spaceId={spaceId}
+        sessionId={chat.sessionId}
+      />
       <ChatInput
         running={chat.status === 'running'}
         onSend={chat.send}

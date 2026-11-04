@@ -6,9 +6,14 @@ import { ApiError } from '../../api/http';
 import { ExperimentsWidget } from './ExperimentsWidget';
 
 vi.mock('../../api/ws', () => ({ useSpaceEvents: vi.fn(), send: vi.fn() }));
-vi.mock('@monaco-editor/react', () => ({ DiffEditor: () => <div data-testid="diff" /> }));
+vi.mock('@monaco-editor/react', () => ({
+  DiffEditor: () => <div data-testid="diff" />,
+}));
 const request = vi.hoisted(() => vi.fn());
-vi.mock('../../api/http', async (orig) => ({ ...(await orig<object>()), request }));
+vi.mock('../../api/http', async (orig) => ({
+  ...(await orig<object>()),
+  request,
+}));
 
 const base = {
   branch: 'exp/1',
@@ -24,9 +29,29 @@ const ready = {
   branch: 'exp/2',
   status: 'ready',
   costUsd: 1.5,
-  plan: { title: 'Shorter prompt', rationale: 'Because', expectedEffect: [], files: [] },
-  comparison: { baseline: { runId: 'r' }, cases: [{ name: 'c1', from: { score: 0.5 }, to: { score: 1 }, delta: 0.5 }] },
-  analysis: { verdict: 'improve', reasons: ['faster'], cases: [], recommendation: 'merge' },
+  plan: {
+    title: 'Shorter prompt',
+    rationale: 'Because',
+    expectedEffect: [],
+    files: [],
+  },
+  comparison: {
+    baseline: { runId: 'r' },
+    cases: [
+      {
+        name: 'c1',
+        from: { score: 0.5, costUsd: 0.1 },
+        to: { score: 1, costUsd: 0.2 },
+        delta: 0.5,
+      },
+    ],
+  },
+  analysis: {
+    verdict: 'improve',
+    reasons: ['faster'],
+    cases: [],
+    recommendation: 'merge',
+  },
   stateProposal: 'Keep the short prompt',
 };
 let list: object[];
@@ -37,16 +62,20 @@ beforeEach(() => {
   list = [running, ready];
   ledger = [];
   failMerge = null;
-  request.mockReset().mockImplementation(async (method: string, url: string) => {
-    if (url.endsWith('/experiments/ledger')) return ledger;
-    if (url.endsWith('/evals/suite')) return { cases: [{ name: 'c1', dir: 'evals/c1', tags: [] }], tags: [] };
-    if (method === 'POST' && url.endsWith('/merge') && failMerge) throw failMerge;
-    if (method === 'POST') return {};
-    if (url.endsWith('/diff')) return { files: [] };
-    const m = /experiments\/(\d+)$/.exec(url);
-    if (m) return list.find((e) => (e as { id: number }).id === Number(m[1]));
-    return list;
-  });
+  request
+    .mockReset()
+    .mockImplementation(async (method: string, url: string) => {
+      if (url.endsWith('/experiments/ledger')) return ledger;
+      if (url.endsWith('/evals/suite'))
+        return { cases: [{ name: 'c1', dir: 'evals/c1', tags: [] }], tags: [] };
+      if (method === 'POST' && url.endsWith('/merge') && failMerge)
+        throw failMerge;
+      if (method === 'POST') return {};
+      if (url.endsWith('/diff')) return { files: [] };
+      const m = /experiments\/(\d+)$/.exec(url);
+      if (m) return list.find((e) => (e as { id: number }).id === Number(m[1]));
+      return list;
+    });
 });
 
 function renderWidget() {
@@ -59,7 +88,10 @@ function renderWidget() {
     </QueryClientProvider>,
   );
 }
-const post = (end: string) => request.mock.calls.find((c) => c[0] === 'POST' && (c[1] as string).endsWith(end));
+const post = (end: string) =>
+  request.mock.calls.find(
+    (c) => c[0] === 'POST' && (c[1] as string).endsWith(end),
+  );
 
 describe('ExperimentsWidget', () => {
   it('validates the cost and posts the run body', async () => {
@@ -70,7 +102,9 @@ describe('ExperimentsWidget', () => {
     expect(post('/run')).toBeUndefined();
     expect(screen.getByText('Enter 0 to 20')).toBeTruthy();
     fireEvent.change(cost, { target: { value: '3' } });
-    fireEvent.change(screen.getByLabelText('Focus (optional)'), { target: { value: ' tighter ' } });
+    fireEvent.change(screen.getByLabelText('Focus (optional)'), {
+      target: { value: ' tighter ' },
+    });
     fireEvent.click(screen.getByText('Run experiment'));
     await waitFor(() => expect(post('/run')).toBeTruthy());
     expect(post('/run')![2]).toEqual({ maxCostUsd: 3, focus: 'tighter' });
@@ -86,12 +120,17 @@ describe('ExperimentsWidget', () => {
 
   it('shows a hint for an untrusted plugin', async () => {
     request.mockImplementation(async (method: string, url: string) => {
-      if (method === 'POST') throw new ApiError('EVAL_UNTRUSTED', 'Confirm first', 409);
+      if (method === 'POST')
+        throw new ApiError('EVAL_UNTRUSTED', 'Confirm first', 409);
       return url.endsWith('/suite') ? { cases: [], tags: [] } : [];
     });
     renderWidget();
     fireEvent.click(screen.getByText('Run experiment'));
-    expect(await screen.findByText(/Confirm first Tick "Trust this plugin" in the form first/)).toBeTruthy();
+    expect(
+      await screen.findByText(
+        /Confirm first Tick "Trust this plugin" in the form first/,
+      ),
+    ).toBeTruthy();
   });
 
   it('cancels a running experiment', async () => {
@@ -106,13 +145,27 @@ describe('ExperimentsWidget', () => {
     renderWidget();
     fireEvent.click(await screen.findByText('Shorter prompt'));
     expect(await screen.findByText('Hypothesis: Shorter prompt')).toBeTruthy();
+    for (const h of ['Case', 'Score', 'Δ', 'Cost'])
+      expect(screen.getByText(h)).toBeTruthy();
+    expect(screen.queryByText('Traces')).toBeNull();
+    expect(screen.getByText('0.50 → 1.00')).toBeTruthy();
     expect(screen.getByText('+0.50')).toBeTruthy();
     expect(screen.getByText('faster')).toBeTruthy();
     expect(screen.getByText('Keep the short prompt')).toBeTruthy();
     fireEvent.click(screen.getByText('Merge'));
-    expect(await screen.findByText(/merges exp\/2 into the current branch/i)).toBeTruthy();
+    expect(
+      await screen.findByText(/merges exp\/2 into the current branch/i),
+    ).toBeTruthy();
     expect(post('/2/merge')).toBeUndefined();
-    fireEvent.click(screen.getAllByText('Merge').find((b) => (b as unknown as { closest(s: string): unknown }).closest('.mantine-Modal-content'))!);
+    fireEvent.click(
+      screen
+        .getAllByText('Merge')
+        .find((b) =>
+          (b as unknown as { closest(s: string): unknown }).closest(
+            '.mantine-Modal-content',
+          ),
+        )!,
+    );
     expect(await screen.findByText('Merge conflict in: a.md')).toBeTruthy();
     expect(post('/2/merge')).toBeTruthy();
   });
@@ -148,7 +201,15 @@ describe('ExperimentsWidget', () => {
     expect(screen.queryByText('hypothesis')).toBeNull(); // loop stages are not shown for this kind
     expect(screen.getByText('propose')).toBeTruthy();
     fireEvent.click(screen.getByText('Accept (merge)'));
-    fireEvent.click(screen.getAllByText('Merge').find((b) => (b as unknown as { closest(s: string): unknown }).closest('.mantine-Modal-content'))!);
+    fireEvent.click(
+      screen
+        .getAllByText('Merge')
+        .find((b) =>
+          (b as unknown as { closest(s: string): unknown }).closest(
+            '.mantine-Modal-content',
+          ),
+        )!,
+    );
     await waitFor(() => expect(post('/3/merge')).toBeTruthy());
     expect(screen.getByText('Reject (discard)')).toBeTruthy();
   });
@@ -156,9 +217,18 @@ describe('ExperimentsWidget', () => {
   it('shows the unknown verdict warning', async () => {
     list = [
       {
-        ...base, id: 4, branch: 'exp/4', status: 'ready', kind: 'description', skill: 'demo',
+        ...base,
+        id: 4,
+        branch: 'exp/4',
+        status: 'ready',
+        kind: 'description',
+        skill: 'demo',
         candidates: [{ text: 'Old', train: 0.5, costUsd: 0 }],
-        descriptionResult: { bestIndex: 0, verdict: 'unknown', warning: 'no holdout cases' },
+        descriptionResult: {
+          bestIndex: 0,
+          verdict: 'unknown',
+          warning: 'no holdout cases',
+        },
       },
     ];
     renderWidget();
@@ -168,12 +238,27 @@ describe('ExperimentsWidget', () => {
     expect(screen.getByText('unknown')).toBeTruthy();
   });
   it('lists ledger records with verdict, merged state and lesson', async () => {
-    ledger = [{
-      id: 'l1', at: '2026-02-03T00:00:00Z', experiment: 2, kind: 'hypothesis', skills: ['demo'], files: [],
-      changeType: 'instructions', hypothesis: 'Shorten intro', diffSummary: '', diffStat: { files: 1, additions: 1, deletions: 0 },
-      base: 'a', evalRunIds: [], cases: [], merged: false, lesson: 'Shorter intros lose context', costUsd: 1,
-      suite: { cases: 4, mean: -0.2, ci: [-0.3, -0.1], verdict: 'regressed' },
-    }];
+    ledger = [
+      {
+        id: 'l1',
+        at: '2026-02-03T00:00:00Z',
+        experiment: 2,
+        kind: 'hypothesis',
+        skills: ['demo'],
+        files: [],
+        changeType: 'instructions',
+        hypothesis: 'Shorten intro',
+        diffSummary: '',
+        diffStat: { files: 1, additions: 1, deletions: 0 },
+        base: 'a',
+        evalRunIds: [],
+        cases: [],
+        merged: false,
+        lesson: 'Shorter intros lose context',
+        costUsd: 1,
+        suite: { cases: 4, mean: -0.2, ci: [-0.3, -0.1], verdict: 'regressed' },
+      },
+    ];
     renderWidget();
     expect(await screen.findByText('Shorten intro')).toBeTruthy();
     expect(screen.getByText('Shorter intros lose context')).toBeTruthy();

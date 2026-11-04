@@ -1,44 +1,87 @@
 import { MantineProvider } from '@mantine/core';
-import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+} from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { DataTable, type Column } from './DataTable';
-import { EvalPrefsScope, copyPrefs, updatePrefs, useEvalPrefs, useOpen } from './prefs';
+import { caseCompareColumns } from './columns';
+import {
+  EvalPrefsScope,
+  copyPrefs,
+  updatePrefs,
+  useEvalPrefs,
+  useOpen,
+} from './prefs';
 
-const scoped = (widgetId: string) => ({ children }: { children: ReactNode }) => (
-  <MantineProvider>
-    <EvalPrefsScope spaceId="s" widgetId={widgetId}>
-      {children}
-    </EvalPrefsScope>
-  </MantineProvider>
-);
+const scoped =
+  (widgetId: string) =>
+  ({ children }: { children: ReactNode }) => (
+    <MantineProvider>
+      <EvalPrefsScope spaceId="s" widgetId={widgetId}>
+        {children}
+      </EvalPrefsScope>
+    </MantineProvider>
+  );
 
 describe('useEvalPrefs', () => {
   it('starts from the defaults and persists a change', () => {
-    const { result } = renderHook(() => useEvalPrefs(), { wrapper: scoped('w') });
-    expect(result.current[0]).toMatchObject({ view: 'suites', page: null, open: {}, form: { cost: '1', cases: [] } });
+    const { result } = renderHook(() => useEvalPrefs(), {
+      wrapper: scoped('w'),
+    });
+    expect(result.current[0]).toMatchObject({
+      view: 'suites',
+      page: null,
+      open: {},
+      form: { cost: '1', cases: [] },
+    });
     act(() => result.current[1](() => ({ view: 'targets' })));
     expect(result.current[0].view).toBe('targets');
-    expect(JSON.parse(localStorage.getItem('pm.evals.s.w') as string).view).toBe('targets');
+    expect(
+      JSON.parse(localStorage.getItem('pm.evals.s.w') as string).view,
+    ).toBe('targets');
   });
 
   it('falls back per field on corrupt storage', () => {
-    localStorage.setItem('pm.evals.s.bad', '{"view":"nope","limit":-3,"open":{"a":true},"form":5}');
-    const { result } = renderHook(() => useEvalPrefs(), { wrapper: scoped('bad') });
-    expect(result.current[0]).toMatchObject({ view: 'suites', open: { a: true }, form: { cost: '1' } });
+    localStorage.setItem(
+      'pm.evals.s.bad',
+      '{"view":"nope","limit":-3,"open":{"a":true},"form":5}',
+    );
+    const { result } = renderHook(() => useEvalPrefs(), {
+      wrapper: scoped('bad'),
+    });
+    expect(result.current[0]).toMatchObject({
+      view: 'suites',
+      open: { a: true },
+      form: { cost: '1' },
+    });
     expect(result.current[0].limit).toBeUndefined();
     localStorage.setItem('pm.evals.s.junk', 'not json');
-    expect(renderHook(() => useEvalPrefs(), { wrapper: scoped('junk') }).result.current[0].view).toBe('suites');
+    expect(
+      renderHook(() => useEvalPrefs(), { wrapper: scoped('junk') }).result
+        .current[0].view,
+    ).toBe('suites');
   });
 
   it('works when storage throws', () => {
-    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new Error('blocked');
+    const get = vi
+      .spyOn(Storage.prototype, 'getItem')
+      .mockImplementation(() => {
+        throw new Error('blocked');
+      });
+    const set = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('blocked');
+      });
+    const { result } = renderHook(() => useEvalPrefs(), {
+      wrapper: scoped('mem'),
     });
-    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new Error('blocked');
-    });
-    const { result } = renderHook(() => useEvalPrefs(), { wrapper: scoped('mem') });
     act(() => result.current[1](() => ({ view: 'invocations' })));
     expect(result.current[0].view).toBe('invocations');
     get.mockRestore();
@@ -56,8 +99,12 @@ describe('useEvalPrefs', () => {
     };
     const Two = () => (
       <MantineProvider>
-        <EvalPrefsScope spaceId="s" widgetId="a"><Probe id="a" /></EvalPrefsScope>
-        <EvalPrefsScope spaceId="s" widgetId="b"><Probe id="b" /></EvalPrefsScope>
+        <EvalPrefsScope spaceId="s" widgetId="a">
+          <Probe id="a" />
+        </EvalPrefsScope>
+        <EvalPrefsScope spaceId="s" widgetId="b">
+          <Probe id="b" />
+        </EvalPrefsScope>
       </MantineProvider>
     );
     render(<Two />);
@@ -73,21 +120,53 @@ describe('useEvalPrefs', () => {
   it('copies the settings of a widget to its duplicate', () => {
     updatePrefs('s.src', () => ({ view: 'targets' }));
     copyPrefs('s', 'src', 'dup');
-    expect(renderHook(() => useEvalPrefs(), { wrapper: scoped('dup') }).result.current[0].view).toBe('targets');
+    expect(
+      renderHook(() => useEvalPrefs(), { wrapper: scoped('dup') }).result
+        .current[0].view,
+    ).toBe('targets');
+  });
+
+  it('reads the invocations column ids saved before the shared metric columns', () => {
+    localStorage.setItem(
+      'pm.evals.s.old',
+      '{"columns":{"invocations":["cost","time","model"],"runs":["cost"]}}',
+    );
+    const { result } = renderHook(() => useEvalPrefs(), {
+      wrapper: scoped('old'),
+    });
+    expect(result.current[0].columns).toEqual({
+      invocations: ['costUsd', 'durationMs', 'model'],
+      runs: ['cost'],
+    });
   });
 });
 
 type Row = { name: string; extra?: number };
 const columns: Column<Row>[] = [
-  { id: 'name', label: 'Name', fixed: true, render: (r) => r.name, sortValue: (r) => r.name },
-  { id: 'extra', label: 'Extra', has: (r) => r.extra !== undefined, render: (r) => r.extra },
+  {
+    id: 'name',
+    label: 'Name',
+    fixed: true,
+    render: (r) => r.name,
+    sortValue: (r) => r.name,
+  },
+  {
+    id: 'extra',
+    label: 'Extra',
+    has: (r) => r.extra !== undefined,
+    render: (r) => r.extra,
+  },
   { id: 'off', label: 'Off', off: true, render: () => 'off-cell' },
 ];
-const table = (rows: Row[]) => <DataTable kind="t" columns={columns} rows={rows} rowKey={(r) => r.name} />;
+const table = (rows: Row[]) => (
+  <DataTable kind="t" columns={columns} rows={rows} rowKey={(r) => r.name} />
+);
 
 describe('DataTable', () => {
   it('hides columns without data by default and lets the user choose, persisted per kind', async () => {
-    const { rerender } = render(table([{ name: 'a' }]), { wrapper: scoped('d') });
+    const { rerender } = render(table([{ name: 'a' }]), {
+      wrapper: scoped('d'),
+    });
     expect(screen.queryByText('Extra')).toBeNull();
     expect(screen.queryByText('Off')).toBeNull();
     fireEvent.click(screen.getByText('Columns'));
@@ -110,4 +189,11 @@ describe('DataTable', () => {
     fireEvent.click(screen.getByText('Name'));
     first().toHaveProperty('textContent', 'a');
   });
+});
+
+it('caseCompareColumns has a Traces column only with onTrace', () => {
+  expect(caseCompareColumns({}).map((c) => c.id)).not.toContain('traces');
+  expect(
+    caseCompareColumns({ onTrace: () => undefined }).map((c) => c.id),
+  ).toContain('traces');
 });

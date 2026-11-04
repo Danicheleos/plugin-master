@@ -8,7 +8,10 @@ import { stamp } from './format';
 import { evalsKey } from './hooks';
 
 const request = vi.hoisted(() => vi.fn());
-vi.mock('../../api/http', async (orig) => ({ ...(await orig<object>()), request }));
+vi.mock('../../api/http', async (orig) => ({
+  ...(await orig<object>()),
+  request,
+}));
 
 const run = (
   runId: string,
@@ -29,6 +32,17 @@ const runs = [
   run('r2', '2026-10-12T10:00:00.000Z', 0.75, 0.5),
   run('r1', '2026-10-11T10:00:00.000Z', 0.5, 0.5),
 ];
+/** A case entry as the suites view has it (here: one ablation section). */
+const entry = (
+  name: string,
+  rs: (ReturnType<typeof run> & { pinned?: boolean })[],
+) => ({
+  name,
+  runCount: rs.length,
+  latest: rs[0] ?? { runId: '', model: null },
+  trend: rs.map((r) => r.score).reverse(),
+  sections: rs.length ? [{ kind: 'ablation', runs: rs }] : [],
+});
 
 function view(data: unknown, onOpen = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -53,7 +67,7 @@ describe('EvalTargetsList', () => {
         {
           kind: 'skill',
           name: 'alpha',
-          cases: [{ name: 'c1', lastRunId: 'r2', runs }],
+          cases: [entry('c1', runs)],
           runs,
           contextBytes: 2048,
         },
@@ -61,7 +75,7 @@ describe('EvalTargetsList', () => {
       ],
       unmapped: {
         name: 'Unmapped',
-        cases: [{ name: 'u1', lastRunId: 'r2', runs: [] }],
+        cases: [entry('u1', [])],
         runs: [],
       },
     });
@@ -91,29 +105,26 @@ describe('EvalTargetsList', () => {
     expect(screen.getByText(/tool_used/)).toBeTruthy();
   });
 
-  it('limits the runs with the "Last runs" input of the chart set', () => {
+  it('shows a case like the suites view: baseline sections and the export action', async () => {
     view({
       targets: [
-        {
-          kind: 'skill',
-          name: 'alpha',
-          cases: [{ name: 'c1', lastRunId: 'r2', runs }],
-          runs,
-        },
+        { kind: 'skill', name: 'alpha', cases: [entry('c1', runs)], runs },
       ],
       unmapped: { name: 'Unmapped', cases: [], runs: [] },
     });
+    expect(screen.getByRole('button', { name: 'Export history' })).toBeTruthy();
     fireEvent.click(screen.getByText(/alpha/));
     fireEvent.click(screen.getByRole('button', { name: /▸ c1/ }));
-    expect(screen.getByText(stamp(runs[1]?.startedAt) as string)).toBeTruthy();
-    fireEvent.change(
-      screen.getAllByLabelText('Last runs plotted')[0] as HTMLElement,
-      { target: { value: '1' } },
+    expect(screen.getByText('Ablation arm (without the plugin)')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Export history' }));
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        'POST',
+        '/api/spaces/s/evals/export',
+        { cases: ['c1'] },
+        expect.anything(),
+      ),
     );
-    expect(screen.queryByText(stamp(runs[1]?.startedAt) as string)).toBeNull();
-    expect(
-      screen.getByRole('button', { name: stamp(runs[0]?.startedAt) as string }),
-    ).toBeTruthy();
   });
 
   it('pins a run as the baseline of its case and unpins it', async () => {
@@ -122,7 +133,7 @@ describe('EvalTargetsList', () => {
         {
           kind: 'skill',
           name: 'alpha',
-          cases: [{ name: 'c1', lastRunId: 'r2', runs: [{ ...runs[0], pinned: true }, runs[1]] }],
+          cases: [entry('c1', [{ ...runs[0]!, pinned: true }, runs[1]!])],
           runs,
         },
       ],
@@ -137,11 +148,19 @@ describe('EvalTargetsList', () => {
     fireEvent.click(screen.getAllByText(/c1/)[0] as HTMLElement);
     fireEvent.click(screen.getByRole('button', { name: 'Set as baseline r1' }));
     await waitFor(() =>
-      expect(request).toHaveBeenCalledWith('PUT', '/api/spaces/s/evals/baseline', { case: 'c1', runId: 'r1' }),
+      expect(request).toHaveBeenCalledWith(
+        'PUT',
+        '/api/spaces/s/evals/baseline',
+        { case: 'c1', runId: 'r1' },
+      ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Unset baseline r2' }));
     await waitFor(() =>
-      expect(request).toHaveBeenCalledWith('PUT', '/api/spaces/s/evals/baseline', { case: 'c1', runId: null }),
+      expect(request).toHaveBeenCalledWith(
+        'PUT',
+        '/api/spaces/s/evals/baseline',
+        { case: 'c1', runId: null },
+      ),
     );
   });
 });

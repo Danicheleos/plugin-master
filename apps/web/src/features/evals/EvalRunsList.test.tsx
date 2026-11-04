@@ -6,7 +6,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { EvalRunsList } from './EvalRunsList';
 import { evalRunsKey } from './hooks';
 
-const summary = (id: string, startedAt: string) => ({ id, startedAt, overallScore: 1, casesPassed: 1, casesTotal: 1 });
+const summary = (id: string, startedAt: string) => ({
+  id,
+  startedAt,
+  overallScore: 1,
+  casesPassed: 1,
+  casesTotal: 1,
+});
 const a = summary('a', '2026-10-12T23:34:00.000Z');
 const b = summary('b', '2026-10-12T23:40:00.000Z');
 const solo = summary('solo', '2026-10-10T09:00:00.000Z');
@@ -28,7 +34,16 @@ const data = EvalRunsResponseSchema.parse({
       durationSeconds: 660,
       modelOverride: 'claude-sonnet-5-5',
     },
-    { id: 'solo', startedAt: solo.startedAt, runIds: ['solo'], runs: [solo], totalRuns: 3, score: 1, casesPassed: 1, casesTotal: 1 },
+    {
+      id: 'solo',
+      startedAt: solo.startedAt,
+      runIds: ['solo'],
+      runs: [solo],
+      totalRuns: 3,
+      score: 1,
+      casesPassed: 1,
+      casesTotal: 1,
+    },
   ],
 });
 
@@ -51,6 +66,9 @@ describe('EvalRunsList', () => {
     expect(screen.getByText('2026-10-12 23:34 – 23:45')).toBeTruthy();
     expect(screen.getByText('2 invocations')).toBeTruthy();
     expect(screen.getByText('$3.50')).toBeTruthy();
+    expect(screen.getByText('11m')).toBeTruthy(); // the shared Duration column (660 s)
+    for (const h of ['Score', 'Cost', 'Duration'])
+      expect(screen.getByRole('columnheader', { name: h })).toBeTruthy();
     expect(screen.getByText('1/2')).toBeTruthy();
     expect(screen.getAllByText('0.75').length).toBeGreaterThan(1); // table cell and the score chart's last value
     expect(screen.getByLabelText('Score')).toBeTruthy();

@@ -102,13 +102,9 @@
   cursor: pointer;
 }
 
-.turns,
 .nested {
   margin: 0;
   padding-left: var(--mantine-spacing-lg);
-}
-
-.nested {
   border-left: 2px solid var(--mantine-color-default-border);
 }
 
@@ -116,16 +112,16 @@
   white-space: pre-wrap;
 }
 
-.tool {
-  margin-left: var(--mantine-spacing-xs);
-}
-
 .compare {
   margin-bottom: var(--mantine-spacing-md);
 }
 
 .changed {
-  color: light-dark(var(--mantine-color-yellow-1), var(--mantine-color-yellow-9));
+  color: light-dark(
+    var(--mantine-color-yellow-1),
+    var(--mantine-color-yellow-9)
+  );
+  display: inline-block;
   width: 150px;
 }
 

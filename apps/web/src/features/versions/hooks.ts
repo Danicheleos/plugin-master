@@ -1,5 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { VersionsCompare, VersionsGate, VersionsResponse } from '@pm/protocol';
+import type {
+  GitDiff,
+  VersionsCompare,
+  VersionsGate,
+  VersionsResponse,
+} from '@pm/protocol';
 import { request } from '../../api/http';
 import { useSpaceEvents } from '../../api/ws';
 import { useOnChatIdle } from '../chat/ChatContext';
@@ -12,7 +17,11 @@ export function useVersions(spaceId: string) {
   const qc = useQueryClient();
   const refresh = () => void qc.invalidateQueries({ queryKey: key(spaceId) });
   useSpaceEvents(spaceId, (msg) => {
-    if (msg.type === 'git.changed' || (msg.type === 'eval.status' && msg.state === 'done')) refresh();
+    if (
+      msg.type === 'git.changed' ||
+      (msg.type === 'eval.status' && msg.state === 'done')
+    )
+      refresh();
   });
   useOnChatIdle(refresh);
   return useQuery({
@@ -21,17 +30,44 @@ export function useVersions(spaceId: string) {
   });
 }
 
-const refs = (from: string, to: string) => `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+const refs = (from: string, to: string) =>
+  `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
 
 export const useVersionsCompare = (spaceId: string, from: string, to: string) =>
   useQuery({
     queryKey: [...key(spaceId), 'compare', from, to],
-    queryFn: () => request<VersionsCompare>('GET', url(spaceId, `/compare${refs(from, to)}`)),
+    queryFn: () =>
+      request<VersionsCompare>(
+        'GET',
+        url(spaceId, `/compare${refs(from, to)}`),
+      ),
   });
 
-export const useVersionsGate = (spaceId: string, from: string, to: string, enabled: boolean) =>
+/** One file between the two commits. */
+export const useVersionsDiff = (
+  spaceId: string,
+  from: string,
+  to: string,
+  path: string,
+) =>
+  useQuery({
+    queryKey: [...key(spaceId), 'diff', from, to, path],
+    queryFn: () =>
+      request<GitDiff>(
+        'GET',
+        url(spaceId, `/diff${refs(from, to)}&path=${encodeURIComponent(path)}`),
+      ),
+  });
+
+export const useVersionsGate = (
+  spaceId: string,
+  from: string,
+  to: string,
+  enabled: boolean,
+) =>
   useQuery({
     queryKey: [...key(spaceId), 'gate', from, to],
     enabled,
-    queryFn: () => request<VersionsGate>('GET', url(spaceId, `/gate${refs(from, to)}`)),
+    queryFn: () =>
+      request<VersionsGate>('GET', url(spaceId, `/gate${refs(from, to)}`)),
   });

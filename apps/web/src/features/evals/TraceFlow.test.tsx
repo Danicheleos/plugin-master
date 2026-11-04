@@ -4,7 +4,13 @@ import type { Trace, TraceToolUse, TraceTurn } from '@pm/protocol';
 import { describe, expect, it } from 'vitest';
 import { TraceFlow } from './TraceFlow';
 
-const tool = (id: string, name: string, input: object, isError = false, turns?: TraceTurn[]): TraceToolUse => ({
+const tool = (
+  id: string,
+  name: string,
+  input: object,
+  isError = false,
+  turns?: TraceTurn[],
+): TraceToolUse => ({
   id,
   name,
   input: JSON.stringify(input),
@@ -22,14 +28,34 @@ const turn = (id: string, tools: TraceToolUse[], text?: string): TraceTurn => ({
 const trace: Trace = {
   prompt: 'Make a skill',
   metrics: {
-    modelCalls: 3, subagentModelCalls: 1, toolCalls: {}, toolCallsTotal: 10, toolErrors: 1, subagents: [],
-    maxContext: 1000, finalContext: 1000, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0,
-    cacheCreationTokens: 0, numTurns: 3, costUsd: 0.5, durationMs: 4000, permissionDenials: 1, badLines: 0,
+    modelCalls: 3,
+    subagentModelCalls: 1,
+    toolCalls: {},
+    toolCallsTotal: 10,
+    toolErrors: 1,
+    subagents: [],
+    maxContext: 1000,
+    finalContext: 1000,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    numTurns: 3,
+    costUsd: 0.5,
+    durationMs: 4000,
+    permissionDenials: 1,
+    badLines: 0,
   },
   turns: [
-    turn('a', [tool('s', 'Skill', { skill: 'my-skill' })], 'I will use the skill'),
+    turn(
+      'a',
+      [tool('s', 'Skill', { skill: 'my-skill' })],
+      'I will use the skill',
+    ),
     turn('b', [
-      ...[1, 2, 3, 4, 5, 6].map((n) => tool(`r${n}`, 'Read', { file_path: `/f${n}.md` })),
+      ...[1, 2, 3, 4, 5, 6].map((n) =>
+        tool(`r${n}`, 'Read', { file_path: `/f${n}.md` }),
+      ),
       tool('w', 'Write', { file_path: '/out.md' }),
       tool('t', 'Task', { description: 'Helper job' }, false, [
         turn('n1', [tool('nb', 'Bash', { command: 'echo nested' }, true)]),
@@ -56,14 +82,18 @@ describe('TraceFlow', () => {
     expect(screen.getByText('echo nested')).toBeTruthy();
     expect(screen.getByText('error')).toBeTruthy();
     expect(screen.getByText('1 tool errors', { exact: false })).toBeTruthy();
-    expect(screen.getByText('1 permission denials', { exact: false })).toBeTruthy();
+    expect(
+      screen.getByText('1 permission denials', { exact: false }),
+    ).toBeTruthy();
   });
 
   it('expands a long model text in place', () => {
     const long = Array.from({ length: 12 }, (_, i) => `line ${i}`).join('\n');
     render(
       <MantineProvider>
-        <TraceFlow trace={{ ...trace, prompt: undefined, turns: [turn('x', [], long)] }} />
+        <TraceFlow
+          trace={{ ...trace, prompt: undefined, turns: [turn('x', [], long)] }}
+        />
       </MantineProvider>,
     );
     const clamped = { selector: '[data-line-clamp="true"]' };
@@ -74,11 +104,54 @@ describe('TraceFlow', () => {
   });
 });
 
+describe('TraceFlow flat (Log) and subagents', () => {
+  it('lists every call without collapsing and shows the recorded subagent metadata', () => {
+    const withSub: Trace = {
+      ...trace,
+      metrics: {
+        ...trace.metrics,
+        subagents: [
+          {
+            toolUseId: 't',
+            subagentType: 'reader',
+            description: 'Helper job',
+            status: 'completed',
+            totalTokens: 1200,
+            toolUses: 3,
+            durationMs: 5000,
+          },
+        ],
+      },
+    };
+    render(
+      <MantineProvider>
+        <TraceFlow trace={withSub} flat />
+      </MantineProvider>,
+    );
+    expect(screen.queryByText('6 reads')).toBeNull();
+    expect(screen.getByText('/f1.md')).toBeTruthy();
+    expect(screen.getByText('echo nested')).toBeTruthy();
+    expect(screen.getByLabelText('subagent')).toHaveProperty(
+      'textContent',
+      'reader · Helper job · completed · 1.2k tokens · 3 tool uses · 5s',
+    );
+    expect(screen.getByText('Make a skill')).toBeTruthy();
+  });
+});
+
 describe('TraceFlow preamble', () => {
   it('folds the system prompt and the pre-turn context until opened', () => {
     render(
       <MantineProvider>
-        <TraceFlow trace={{ ...trace, preamble: { system: 'SYSTEM TEXT', items: [{ kind: 'skill_listing', text: 'LISTING' }] } }} />
+        <TraceFlow
+          trace={{
+            ...trace,
+            preamble: {
+              system: 'SYSTEM TEXT',
+              items: [{ kind: 'skill_listing', text: 'LISTING' }],
+            },
+          }}
+        />
       </MantineProvider>,
     );
     fireEvent.click(screen.getByText(/System prompt/));

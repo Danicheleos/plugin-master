@@ -1,36 +1,15 @@
-import { memo, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
-import { Button, Code, Collapse, Paper, Text, Typography } from '@mantine/core';
+import { Anchor, Button, Paper, Text, Typography } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import type { ChatEvent } from '@pm/protocol';
+import type { ChatEvent, TraceToolUse } from '@pm/protocol';
+import { toolKind } from '../evals/describeTool';
+import { ToolCall } from '../evals/TraceFlow';
+import { RunTraceModal } from '../runs/RunsList';
 import styles from './chat.module.scss';
 
-function Tool({
-  label,
-  color,
-  children,
-}: {
-  label: string;
-  color: string;
-  children: ReactNode;
-}) {
-  const [open, { toggle }] = useDisclosure(false);
-  return (
-    <div>
-      <Button variant="subtle" color={color} size="compact-xs" onClick={toggle}>
-        {label}
-      </Button>
-      <Collapse expanded={open}>
-        <Code block fz="xs">
-          {children}
-        </Code>
-      </Collapse>
-    </div>
-  );
-}
-
 // memo: events are append-only and immutable, so old messages are never re-parsed as Markdown
-const Item = memo(function Item({ e }: { e: ChatEvent }) {
+const Item = memo(function Item({ e }: { e: Exclude<ChatEvent, ToolEvent> }) {
   switch (e.kind) {
     case 'user':
       return (
@@ -45,21 +24,6 @@ const Item = memo(function Item({ e }: { e: ChatEvent }) {
         <Typography>
           <Markdown>{e.text}</Markdown>
         </Typography>
-      );
-    case 'tool_use':
-      return (
-        <Tool label={`🔧 ${e.name}`} color="gray">
-          {JSON.stringify(e.input, null, 2)}
-        </Tool>
-      );
-    case 'tool_result':
-      return (
-        <Tool
-          label={e.isError ? 'Tool error' : 'Result'}
-          color={e.isError ? 'red' : 'gray'}
-        >
-          {e.preview}
-        </Tool>
       );
     case 'result':
       return (
@@ -86,7 +50,9 @@ const Item = memo(function Item({ e }: { e: ChatEvent }) {
 export const MAX_ITEMS = 300;
 
 type ToolEvent = Extract<ChatEvent, { kind: 'tool_use' | 'tool_result' }>;
-type Row = { at: number; e: ChatEvent } | { at: number; tools: ToolEvent[] };
+type Row =
+  | { at: number; e: Exclude<ChatEvent, ToolEvent> }
+  | { at: number; tools: ToolEvent[] };
 
 const isTool = (e: ChatEvent): e is ToolEvent =>
   e.kind === 'tool_use' || e.kind === 'tool_result';
@@ -120,10 +86,46 @@ function summary(tools: ToolEvent[]): string {
   );
 }
 
+/** Tool calls of a group with their results (by `toolUseId`), as trace tool uses; a result without its call stands alone. */
+function pairTools(tools: ToolEvent[]): TraceToolUse[] {
+  const out: TraceToolUse[] = [];
+  const byId = new Map<string, TraceToolUse>();
+  for (const e of tools) {
+    if (e.kind === 'tool_use') {
+      const t: TraceToolUse = {
+        id: e.id,
+        name: e.name,
+        input: JSON.stringify(e.input ?? null),
+      };
+      byId.set(e.id, t);
+      out.push(t);
+    } else {
+      const result = { preview: e.preview, isError: e.isError };
+      const t = byId.get(e.toolUseId);
+      if (t) t.result = result;
+      else out.push({ id: e.toolUseId, name: 'Result', input: '', result });
+    }
+  }
+  return out;
+}
+
+type Session = { spaceId?: string; sessionId?: string | null };
+
 // events are append-only: a group only changes when it grows
 const ToolGroup = memo(
-  function ToolGroup({ tools }: { tools: ToolEvent[] }) {
+  function ToolGroup({
+    tools,
+    spaceId,
+    sessionId,
+  }: { tools: ToolEvent[] } & Session) {
     const [open, { toggle }] = useDisclosure(false);
+    const [trace, setTrace] = useState(false);
+    const calls = useMemo(() => pairTools(tools), [tools]);
+    const link = spaceId && sessionId && (
+      <Anchor component="button" size="xs" onClick={() => setTrace(true)}>
+        Open run trace
+      </Anchor>
+    );
     return (
       <div>
         <Button
@@ -137,22 +139,41 @@ const ToolGroup = memo(
         </Button>
         {open && (
           <div className={styles.tools}>
-            {tools.map((e, i) => (
-              <Item key={i} e={e} />
+            {calls.map((t) => (
+              <ToolCall
+                key={t.id}
+                t={t}
+                action={toolKind(t.name) === 'agent' ? link : undefined}
+              />
             ))}
           </div>
+        )}
+        {trace && spaceId && sessionId && (
+          <RunTraceModal
+            spaceId={spaceId}
+            runId={sessionId}
+            title={sessionId}
+            onClose={() => setTrace(false)}
+          />
         )}
       </div>
     );
   },
-  (a, b) => a.tools.length === b.tools.length && a.tools[0] === b.tools[0],
+  (a, b) =>
+    a.tools.length === b.tools.length &&
+    a.tools[0] === b.tools[0] &&
+    a.spaceId === b.spaceId &&
+    a.sessionId === b.sessionId,
 );
 
+/** Chat events; `spaceId`/`sessionId` give Agent calls an "Open run trace" link to this session's recorded run. */
 export const MessageList = memo(function MessageList({
   events,
+  spaceId,
+  sessionId,
 }: {
   events: ChatEvent[];
-}) {
+} & Session) {
   // never split a tool group (a result from its call): start at the group's first event, which
   // also keeps the group's key and open state while the window slides
   let hidden = Math.max(0, events.length - MAX_ITEMS);
@@ -179,7 +200,12 @@ export const MessageList = memo(function MessageList({
       )}
       {rows.map((r) =>
         'tools' in r ? (
-          <ToolGroup key={r.at} tools={r.tools} />
+          <ToolGroup
+            key={r.at}
+            tools={r.tools}
+            spaceId={spaceId}
+            sessionId={sessionId}
+          />
         ) : (
           <Item key={r.at} e={r.e} />
         ),

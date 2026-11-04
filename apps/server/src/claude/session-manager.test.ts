@@ -43,7 +43,6 @@ async function setup(
   const history: History = {
     list: async () => [],
     all: async () => [],
-    trace: async () => undefined,
     events: async (dir, id) => {
       asked.push({ dir, id });
       return [{ kind: 'user', text: 'old' }];
@@ -164,26 +163,49 @@ describe('session manager', () => {
   it('passes the space agent presets, merged over the defaults, to the session', async () => {
     const { sessions, client, home } = await setup();
     await mkdir(join(home, '.plugin-master/agents'));
-    await writeFile(join(home, '.plugin-master/agents/reader.md'), '---\ndescription: mine\nmodel: sonnet\n---\nmy reader');
+    await writeFile(
+      join(home, '.plugin-master/agents/reader.md'),
+      '---\ndescription: mine\nmodel: sonnet\n---\nmy reader',
+    );
     const c = await client();
     c.send({ type: 'subscribe', spaceId: 's1' });
     await vi.waitFor(() => expect(c.types()).toContain('chat.history'));
     c.send({ type: 'chat.send', spaceId: 's1', text: 'hi' });
     await vi.waitFor(() => expect(sessions[0]?.texts).toEqual(['hi']));
     const agents = sessions[0].o.agents ?? {};
-    expect(Object.keys(agents).sort()).toEqual(['Explore', 'Plan', 'general-purpose', 'reader', 'runner', 'writer']);
-    expect(agents.reader).toMatchObject({ description: 'mine', model: 'sonnet' });
+    expect(Object.keys(agents).sort()).toEqual([
+      'Explore',
+      'Plan',
+      'general-purpose',
+      'reader',
+      'runner',
+      'writer',
+    ]);
+    expect(agents.reader).toMatchObject({
+      description: 'mine',
+      model: 'sonnet',
+    });
   });
 
   it('passes disabledPlugins and autoMemory from config.json to the session', async () => {
     const { sessions, client, home } = await setup();
-    await writeFile(join(home, '.plugin-master/config.json'), JSON.stringify({ masterContext: [], disabledPlugins: ['a@m'], autoMemory: false }));
+    await writeFile(
+      join(home, '.plugin-master/config.json'),
+      JSON.stringify({
+        masterContext: [],
+        disabledPlugins: ['a@m'],
+        autoMemory: false,
+      }),
+    );
     const c = await client();
     c.send({ type: 'subscribe', spaceId: 's1' });
     await vi.waitFor(() => expect(c.types()).toContain('chat.history'));
     c.send({ type: 'chat.send', spaceId: 's1', text: 'hi' });
     await vi.waitFor(() => expect(sessions[0]?.texts).toEqual(['hi']));
-    expect(sessions[0].o).toMatchObject({ disabledPlugins: ['a@m'], autoMemory: false });
+    expect(sessions[0].o).toMatchObject({
+      disabledPlugins: ['a@m'],
+      autoMemory: false,
+    });
   });
 
   it('drops finished subagents from the roster after 30 minutes idle, keeps running ones', async () => {
@@ -195,8 +217,22 @@ describe('session manager', () => {
     await vi.waitFor(() => expect(sessions[0]?.texts).toEqual(['hi']));
     const o = sessions[0].o;
     for (const id of ['done', 'busy'])
-      o.onMessage(asMsg({ type: 'system', subtype: 'task_started', task_id: id, description: id }));
-    o.onMessage(asMsg({ type: 'system', subtype: 'task_notification', task_id: 'done', status: 'completed' }));
+      o.onMessage(
+        asMsg({
+          type: 'system',
+          subtype: 'task_started',
+          task_id: id,
+          description: id,
+        }),
+      );
+    o.onMessage(
+      asMsg({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'done',
+        status: 'completed',
+      }),
+    );
     expect([...(o.tasks?.() ?? [])].map((t) => t.id)).toEqual(['done', 'busy']);
     const now = Date.now();
     const spy = vi.spyOn(Date, 'now').mockReturnValue(now + 31 * 60_000);
@@ -289,7 +325,10 @@ describe('session manager', () => {
   });
 
   it('passes the userSettings feature to new sessions', async () => {
-    for (const [features, want] of [[undefined, false], [{ userSettings: true }, true]] as const) {
+    for (const [features, want] of [
+      [undefined, false],
+      [{ userSettings: true }, true],
+    ] as const) {
       const { sessions, client } = await setup([], { features });
       const c = await client();
       c.send({ type: 'subscribe', spaceId: 's1' });

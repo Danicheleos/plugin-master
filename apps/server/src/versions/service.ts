@@ -3,6 +3,7 @@ import {
   compareCases,
   type CaseSide,
   type EvalGroup,
+  type GitDiff,
   type VersionEntry,
   type VersionSide,
   type VersionsCompare,
@@ -14,9 +15,15 @@ import { evalDir } from '../evals/eval-dir';
 import { groupRuns, type RunInput } from '../evals/groups';
 import { loadRuns, readMerged } from '../evals/results';
 import { readSuite } from '../evals/suite';
-import { inRepo } from '../git/service';
+import { gitDiff, inRepo } from '../git/service';
 import { AppError } from '../lib/errors';
-import { contextBytes, evaluateGate, resolveCommit, suiteOf, type LogEntry } from './logic';
+import {
+  contextBytes,
+  evaluateGate,
+  resolveCommit,
+  suiteOf,
+  type LogEntry,
+} from './logic';
 import { readMeta } from './sidecar';
 
 /** Commits scanned to map runs to commits; the list shows the first `limit`. */
@@ -30,24 +37,43 @@ type Commit = LogEntry & { date: string; author: string; message: string };
 
 const readLog = (root: string): Promise<Commit[]> =>
   inRepo(root, async (git) => {
-    if (!(await git.raw(['rev-parse', '--verify', '-q', 'HEAD']).catch(() => ''))) return [];
-    const raw = await git.raw(['log', `--max-count=${SCAN}`, '--format=%H%x1f%T%x1f%ct%x1f%cI%x1f%an%x1f%s%x1e']);
+    if (
+      !(await git.raw(['rev-parse', '--verify', '-q', 'HEAD']).catch(() => ''))
+    )
+      return [];
+    const raw = await git.raw([
+      'log',
+      `--max-count=${SCAN}`,
+      '--format=%H%x1f%T%x1f%ct%x1f%cI%x1f%an%x1f%s%x1e',
+    ]);
     return raw
       .split('\x1e')
       .map((r) => r.trim())
       .filter(Boolean)
       .map((r) => {
         const [hash, tree, ct, date, author, ...msg] = r.split('\x1f');
-        return { hash, tree, time: Number(ct) * 1000, date, author, message: msg.join('\x1f') };
+        return {
+          hash,
+          tree,
+          time: Number(ct) * 1000,
+          date,
+          author,
+          message: msg.join('\x1f'),
+        };
       });
   });
 
 /** Full sha of a user-supplied ref; the ref is checked before it reaches git. */
 async function verifyRef(root: string, ref: string): Promise<string> {
-  const bad = () => new AppError('INVALID_REF', `Invalid or unknown ref "${ref}"`, 400);
+  const bad = () =>
+    new AppError('INVALID_REF', `Invalid or unknown ref "${ref}"`, 400);
   if (!REF_RE.test(ref)) throw bad();
   const sha = await inRepo(root, async (git) =>
-    (await git.raw(['rev-parse', '--verify', '-q', `${ref}^{commit}`]).catch(() => '')).trim(),
+    (
+      await git
+        .raw(['rev-parse', '--verify', '-q', `${ref}^{commit}`])
+        .catch(() => '')
+    ).trim(),
   );
   if (!sha) throw bad();
   return sha;
@@ -57,7 +83,10 @@ type CommitGroup = { group: EvalGroup; approx: boolean; dirty: boolean };
 const trendable = (g: EvalGroup) => !g.partial && !g.skippedPaid;
 
 /** Eval groups per commit (newest first). Runs are grouped within one commit only. */
-async function commitGroups(root: string, log: Commit[]): Promise<Map<string, CommitGroup[]>> {
+async function commitGroups(
+  root: string,
+  log: Commit[],
+): Promise<Map<string, CommitGroup[]>> {
   const dir = await evalDir(root);
   type Flags = Map<string, { approx: boolean; dirty: boolean }>;
   const byCommit = new Map<string, { inputs: RunInput[]; flags: Flags }>();
@@ -66,7 +95,10 @@ async function commitGroups(root: string, log: Commit[]): Promise<Map<string, Co
     if (error || ablation === 'without') continue; // a baseline-only run is not a point of the plugin
     const r = resolveCommit(await readMeta(root, dir, id), startedAt, log);
     if (!r) continue;
-    const b = byCommit.get(r.hash) ?? { inputs: [] as RunInput[], flags: new Map() as Flags };
+    const b = byCommit.get(r.hash) ?? {
+      inputs: [] as RunInput[],
+      flags: new Map() as Flags,
+    };
     b.inputs.push(input);
     b.flags.set(id, r);
     byCommit.set(r.hash, b);
@@ -85,7 +117,10 @@ async function commitGroups(root: string, log: Commit[]): Promise<Map<string, Co
   );
 }
 
-export async function listVersions(root: string, limit: number): Promise<VersionsResponse> {
+export async function listVersions(
+  root: string,
+  limit: number,
+): Promise<VersionsResponse> {
   const log = await readLog(root);
   const groups = await commitGroups(root, log);
   let prev: number | undefined;
@@ -102,20 +137,21 @@ export async function listVersions(root: string, limit: number): Promise<Version
       date: c.date,
       message: c.message,
       author: c.author,
-      ...(pick && g && {
-        eval: {
-          groupId: g.id,
-          runIds: g.runIds,
-          score: g.score,
-          casesPassed: g.casesPassed,
-          casesTotal: g.casesTotal,
-          costUsd: g.costUsd,
-          ...(g.partial && { partial: true }),
-          ...(g.skippedPaid && { skippedPaid: true }),
-          ...(pick.approx && { approx: true }),
-          ...(pick.dirty && { dirty: true }),
-        },
-      }),
+      ...(pick &&
+        g && {
+          eval: {
+            groupId: g.id,
+            runIds: g.runIds,
+            score: g.score,
+            casesPassed: g.casesPassed,
+            casesTotal: g.casesTotal,
+            costUsd: g.costUsd,
+            ...(g.partial && { partial: true }),
+            ...(g.skippedPaid && { skippedPaid: true }),
+            ...(pick.approx && { approx: true }),
+            ...(pick.dirty && { dirty: true }),
+          },
+        }),
       trendable: ok,
       ...(ok && prev !== undefined && { delta: score - prev }),
     });
@@ -125,12 +161,19 @@ export async function listVersions(root: string, limit: number): Promise<Version
 }
 
 /** The latest non-partial merged group of a commit: its cases and what it was matched by. */
-async function commitCases(root: string, hash: string, groups: Map<string, CommitGroup[]>) {
+async function commitCases(
+  root: string,
+  hash: string,
+  groups: Map<string, CommitGroup[]>,
+) {
   const pick = groups.get(hash)?.find((x) => !x.group.partial);
   let cases: (CaseSide & { name: string })[] = [];
   if (pick) {
     try {
-      cases = (await readMerged(root, pick.group)).cases.map((c) => ({ name: c.name, ...caseSide(c) }));
+      cases = (await readMerged(root, pick.group)).cases.map((c) => ({
+        name: c.name,
+        ...caseSide(c),
+      }));
     } catch {
       // unreadable run: no data for this commit
     }
@@ -147,7 +190,9 @@ async function commitCases(root: string, hash: string, groups: Map<string, Commi
 /** Bytes of description + body of every `skills/<name>/SKILL.md` at `sha`. */
 const skillSizes = (root: string, sha: string): Promise<SkillSize[]> =>
   inRepo(root, async (git) => {
-    const files = (await git.raw(['ls-tree', '-r', '--name-only', '-z', sha, '--', 'skills']))
+    const files = (
+      await git.raw(['ls-tree', '-r', '--name-only', '-z', sha, '--', 'skills'])
+    )
       .split('\0')
       .filter((f) => /^skills\/[^/]+\/SKILL\.md$/.test(f))
       .slice(0, MAX_SKILLS);
@@ -161,16 +206,29 @@ const skillSizes = (root: string, sha: string): Promise<SkillSize[]> =>
 
 const changedFiles = (root: string, from: string, to: string) =>
   inRepo(root, async (git) => {
-    const t = (await git.raw(['diff', '--name-status', '-z', '--no-renames', from, to])).split('\0');
+    const t = (
+      await git.raw(['diff', '--name-status', '-z', '--no-renames', from, to])
+    ).split('\0');
     const files: { status: string; path: string }[] = [];
-    for (let i = 0; i + 1 < t.length && files.length < MAX_FILES; i += 2) files.push({ status: t[i], path: t[i + 1] });
+    for (let i = 0; i + 1 < t.length && files.length < MAX_FILES; i += 2)
+      files.push({ status: t[i], path: t[i + 1] });
     return files;
   });
 
-export async function compareVersions(root: string, fromRef: string, toRef: string): Promise<VersionsCompare> {
-  const [from, to] = [await verifyRef(root, fromRef), await verifyRef(root, toRef)];
+export async function compareVersions(
+  root: string,
+  fromRef: string,
+  toRef: string,
+): Promise<VersionsCompare> {
+  const [from, to] = [
+    await verifyRef(root, fromRef),
+    await verifyRef(root, toRef),
+  ];
   const groups = await commitGroups(root, await readLog(root));
-  const [a, b] = [await commitCases(root, from, groups), await commitCases(root, to, groups)];
+  const [a, b] = [
+    await commitCases(root, from, groups),
+    await commitCases(root, to, groups),
+  ];
   const [sa, sb] = [await skillSizes(root, from), await skillSizes(root, to)];
   const sum = (s: SkillSize[]) => s.reduce((n, x) => n + x.bytes, 0);
   const cases = compareCases(a.cases, b.cases);
@@ -184,8 +242,26 @@ export async function compareVersions(root: string, fromRef: string, toRef: stri
   };
 }
 
+/** One file between two commits (`from` = old side); refs are verified first. */
+export async function diffVersions(
+  root: string,
+  fromRef: string,
+  toRef: string,
+  path: string,
+): Promise<GitDiff> {
+  const [from, to] = [
+    await verifyRef(root, fromRef),
+    await verifyRef(root, toRef),
+  ];
+  return gitDiff(root, path, from, to);
+}
+
 /** Holdout = cases tagged `holdout` in the suite on disk (the `to` side is normally the checked-out one). */
-export async function gateVersions(root: string, from: string, to: string): Promise<VersionsGate> {
+export async function gateVersions(
+  root: string,
+  from: string,
+  to: string,
+): Promise<VersionsGate> {
   const c = await compareVersions(root, from, to);
   const holdout = (await readSuite(root).catch(() => ({ cases: [] }))).cases
     .filter((x) => x.tags.includes('holdout'))

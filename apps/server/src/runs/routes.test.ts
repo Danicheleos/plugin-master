@@ -11,10 +11,20 @@ it('lists runs newest first and serves a run trace', async () => {
   tmp = await mkdtemp(join(tmpdir(), 'pm-runs-'));
   const path = join(tmp, 'plug');
   await mkdir(path);
-  const app = buildApp({ port: 0, webOrigins: [], token: 't', home: join(tmp, 'home') });
+  const app = buildApp({
+    port: 0,
+    webOrigins: [],
+    token: 't',
+    home: join(tmp, 'home'),
+  });
   const headers = { authorization: 'Bearer t' };
   const space = (
-    await app.inject({ method: 'POST', url: '/api/spaces', headers, payload: { path, name: 'plug' } })
+    await app.inject({
+      method: 'POST',
+      url: '/api/spaces',
+      headers,
+      payload: { path, name: 'plug' },
+    })
   ).json();
   const run = async (id: string, meta: string | null, age: number) => {
     const d = join(path, '.plugin-master/runs', id);
@@ -24,8 +34,19 @@ it('lists runs newest first and serves a run trace', async () => {
     await writeFile(
       f,
       [
-        { type: 'user', message: { role: 'user', content: 'hi there' }, parent_tool_use_id: null },
-        { type: 'assistant', message: { id: 'a1', content: [{ type: 'text', text: 'yo' }], usage: { input_tokens: 5, output_tokens: 1 } } },
+        {
+          type: 'user',
+          message: { role: 'user', content: 'hi there' },
+          parent_tool_use_id: null,
+        },
+        {
+          type: 'assistant',
+          message: {
+            id: 'a1',
+            content: [{ type: 'text', text: 'yo' }],
+            usage: { input_tokens: 5, output_tokens: 1 },
+          },
+        },
       ]
         .map((m) => JSON.stringify(m))
         .join('\n') + '\n',
@@ -34,22 +55,90 @@ it('lists runs newest first and serves a run trace', async () => {
     await utimes(f, t, t);
   };
   const meta = (id: string) =>
-    JSON.stringify({ id, title: id, startedAt: 'a', endedAt: 'b', turns: 1, costUsd: 0, models: [] });
+    JSON.stringify({
+      id,
+      title: id,
+      startedAt: 'a',
+      endedAt: 'b',
+      turns: 1,
+      costUsd: 0,
+      models: [],
+    });
   await run('old', meta('old'), 5000);
   await run('new', meta('new'), 1000);
   await run('bad', '{nope', 3000);
-  const list = (await app.inject({ url: `/api/spaces/${space.id}/runs`, headers })).json();
-  expect(list.runs.map((r: { id: string }) => r.id)).toEqual(['new', 'bad', 'old']);
+  const list = (
+    await app.inject({ url: `/api/spaces/${space.id}/runs`, headers })
+  ).json();
+  expect(list.runs.map((r: { id: string }) => r.id)).toEqual([
+    'new',
+    'bad',
+    'old',
+  ]);
   expect(list.runs[1].error).toBeTruthy();
-  const trace = (await app.inject({ url: `/api/spaces/${space.id}/runs/new/trace`, headers })).json();
+  const trace = (
+    await app.inject({ url: `/api/spaces/${space.id}/runs/new/trace`, headers })
+  ).json();
   expect(trace.prompt).toBe('hi there');
   expect(trace.turns).toHaveLength(1);
   for (const bad of ['..%2fx', 'a%2fb', '..', 'a.b'])
-    expect((await app.inject({ url: `/api/spaces/${space.id}/runs/${bad}/trace`, headers })).statusCode).toBeGreaterThanOrEqual(400);
-  const missing = await app.inject({ url: `/api/spaces/${space.id}/runs/nope/trace`, headers });
+    expect(
+      (
+        await app.inject({
+          url: `/api/spaces/${space.id}/runs/${bad}/trace`,
+          headers,
+        })
+      ).statusCode,
+    ).toBeGreaterThanOrEqual(400);
+  const missing = await app.inject({
+    url: `/api/spaces/${space.id}/runs/nope/trace`,
+    headers,
+  });
   expect(missing.statusCode).toBe(404);
   expect(missing.json().error.code).toBe('RUN_NOT_FOUND');
-  const empty = await app.inject({ url: `/api/spaces/${space.id}/runs`, headers: { authorization: 'Bearer t' } });
+  const empty = await app.inject({
+    url: `/api/spaces/${space.id}/runs`,
+    headers: { authorization: 'Bearer t' },
+  });
   expect(empty.statusCode).toBe(200);
+  await app.close();
+});
+
+it('a run without a Claude Code transcript falls back to its recorded messages', async () => {
+  tmp = await mkdtemp(join(tmpdir(), 'pm-runs-'));
+  const path = join(tmp, 'plug');
+  const id = '11111111-2222-3333-4444-555555555555';
+  await mkdir(join(path, '.plugin-master/runs', id), { recursive: true });
+  await writeFile(
+    join(path, '.plugin-master/runs', id, 'messages.jsonl'),
+    JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: 'recorded' },
+      parent_tool_use_id: null,
+    }) + '\n',
+  );
+  const app = buildApp({
+    port: 0,
+    webOrigins: [],
+    token: 't',
+    home: join(tmp, 'home'),
+    userHome: join(tmp, 'user'),
+  });
+  const headers = { authorization: 'Bearer t' };
+  const space = (
+    await app.inject({
+      method: 'POST',
+      url: '/api/spaces',
+      headers,
+      payload: { path, name: 'plug' },
+    })
+  ).json();
+  const trace = (
+    await app.inject({
+      url: `/api/spaces/${space.id}/runs/${id}/trace`,
+      headers,
+    })
+  ).json();
+  expect(trace.prompt).toBe('recorded');
   await app.close();
 });

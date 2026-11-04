@@ -8,6 +8,7 @@ import type {
 import { ABLATION_BASELINE } from './EvalCompare';
 import { NoResults } from './EvalRunsList';
 import { DataTable } from './DataTable';
+import { ExportCasesButton } from './ExportCasesButton';
 import { MetricGrid } from './MetricGrid';
 import { runsColumns, suiteCaseColumns, type OpenCase } from './columns';
 import { useEvalSuites, useSetBaseline } from './hooks';
@@ -37,7 +38,15 @@ export function EvalSuitesList({
   );
 }
 
-function Suite({ spaceId, suite, onOpen }: { spaceId: string; suite: EvalSuiteEntry; onOpen: OpenCase }) {
+function Suite({
+  spaceId,
+  suite,
+  onOpen,
+}: {
+  spaceId: string;
+  suite: EvalSuiteEntry;
+  onOpen: OpenCase;
+}) {
   const { isOpen: is, toggle } = useOpens();
   const key = `suite:${suite.key}`;
   const open = is(key, true);
@@ -57,6 +66,10 @@ function Suite({ spaceId, suite, onOpen }: { spaceId: string; suite: EvalSuiteEn
         <Text size="xs" c="dimmed">
           {suite.cases.length} cases · {suite.runCount} runs
         </Text>
+        <ExportCasesButton
+          spaceId={spaceId}
+          cases={suite.cases.map((c) => c.name)}
+        />
       </Group>
       {open && (
         <CasesTable
@@ -117,24 +130,6 @@ export function CasesTable({
       }
     />
   );
-}
-
-/** A case entry built from its runs alone (newest first), for views that have no suite structure. */
-export function entryFromRuns(
-  name: string,
-  runs: EvalCaseRun[],
-): EvalCaseEntry {
-  const scores = [...runs]
-    .reverse()
-    .flatMap((r) => (r.score === undefined ? [] : [r.score]));
-  return {
-    name,
-    runCount: runs.length,
-    lastRunAt: runs[0]?.startedAt,
-    latest: runs[0] ?? { runId: '' },
-    trend: scores.slice(-12),
-    sections: runs.length ? [{ kind: 'none', runs }] : [],
-  };
 }
 
 function Section({

@@ -14,11 +14,25 @@ const meta = {
   costUsd: 0.5,
   models: ['claude-sonnet-5-5'],
   commit: 'abcdef123456',
+  claudeVersion: '2.1.301',
+  resumedFrom: '0123456789abcdef',
 };
 const metrics = {
-  modelCalls: 1, toolCallsTotal: 0, toolErrors: 0, permissionDenials: 0, badLines: 0,
-  subagents: [], inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0,
-  maxContext: 1, model: 'trace-model',
+  modelCalls: 1,
+  subagentModelCalls: 0,
+  toolCalls: { Read: 2 },
+  toolCallsTotal: 2,
+  finalContext: 1,
+  toolErrors: 0,
+  permissionDenials: 0,
+  badLines: 0,
+  subagents: [],
+  inputTokens: 1,
+  outputTokens: 1,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
+  maxContext: 1,
+  model: 'trace-model',
 };
 
 function renderList(runs: unknown, trace?: unknown) {
@@ -45,6 +59,9 @@ describe('RunsList', () => {
     expect(screen.getByText('Fix the skill')).toBeTruthy();
     expect(screen.getByText('abcdef1')).toBeTruthy();
     expect(screen.getByText('$0.50')).toBeTruthy();
+    expect(screen.getByText('6m')).toBeTruthy(); // duration
+    expect(screen.getByText('2.1.301')).toBeTruthy();
+    expect(screen.getByText('01234567')).toBeTruthy(); // resumed from
     expect(screen.getByText('error')).toBeTruthy();
   });
 
@@ -53,5 +70,9 @@ describe('RunsList', () => {
     fireEvent.click(screen.getByText('Fix the skill'));
     expect(screen.getByText('Run: Fix the skill')).toBeTruthy();
     expect(screen.getByText(/trace-model/)).toBeTruthy();
+    expect(screen.getByLabelText('tool calls')).toHaveProperty(
+      'textContent',
+      'Read 2',
+    );
   });
 });

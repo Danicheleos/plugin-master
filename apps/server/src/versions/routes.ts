@@ -2,10 +2,18 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { requireFeature } from '../features/service';
 import type { Registry } from '../spaces/registry';
-import { compareVersions, gateVersions, listVersions } from './service';
+import {
+  compareVersions,
+  diffVersions,
+  gateVersions,
+  listVersions,
+} from './service';
 
-const ListQuery = z.object({ limit: z.coerce.number().int().min(1).max(200).default(30) });
+const ListQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(30),
+});
 const RefsQuery = z.object({ from: z.string().min(1), to: z.string().min(1) });
+const DiffQuery = RefsQuery.extend({ path: z.string().min(1) });
 
 /** All routes need the `git` feature. */
 export const versionsRoutes =
@@ -25,6 +33,10 @@ export const versionsRoutes =
     app.get<Req>(url('/compare'), async (r) => {
       const { from, to } = RefsQuery.parse(r.query);
       return compareVersions(await root(r.params.id), from, to);
+    });
+    app.get<Req>(url('/diff'), async (r) => {
+      const { from, to, path } = DiffQuery.parse(r.query);
+      return diffVersions(await root(r.params.id), from, to, path);
     });
     app.get<Req>(url('/gate'), async (r) => {
       const { from, to } = RefsQuery.parse(r.query);

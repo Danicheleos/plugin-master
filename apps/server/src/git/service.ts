@@ -1,12 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { relative, sep } from 'node:path';
-import type {
-  GitBranches,
-  GitCommit,
-  GitDiff,
-  GitStatus,
-} from '@pm/protocol';
+import type { GitBranches, GitCommit, GitDiff, GitStatus } from '@pm/protocol';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import { resolveInSpace } from '../files/safe-path';
 import { AppError } from '../lib/errors';
@@ -48,7 +43,11 @@ const isRepo = (root: string) => existsSync(resolveInSpace(root, '.git'));
 export const inRepo = <T>(root: string, fn: (git: SimpleGit) => Promise<T>) =>
   locked(root, (git) => {
     if (!isRepo(root))
-      throw new AppError('NOT_A_REPO', 'The space is not a git repository', 409);
+      throw new AppError(
+        'NOT_A_REPO',
+        'The space is not a git repository',
+        409,
+      );
     return fn(git);
   });
 
@@ -79,10 +78,7 @@ async function statusOf(git: SimpleGit): Promise<GitStatus> {
 }
 
 /** `readOnly` (background snapshots) skips the optional index refresh, so it never takes index.lock. */
-export const gitStatus = (
-  root: string,
-  readOnly = false,
-): Promise<GitStatus> =>
+export const gitStatus = (root: string, readOnly = false): Promise<GitStatus> =>
   locked(
     root,
     async (git) => (isRepo(root) ? statusOf(git) : { isRepo: false }),
@@ -95,21 +91,35 @@ export const gitInit = (root: string): Promise<GitStatus> =>
     return statusOf(git);
   });
 
-/** `ref` = the old side (default HEAD); the new side is the file on disk. */
-export const gitDiff = (root: string, path: string, ref = 'HEAD'): Promise<GitDiff> =>
+/** `ref` = the old side (default HEAD); the new side is `to:<path>` when `to` is given, else the file on disk. */
+export const gitDiff = (
+  root: string,
+  path: string,
+  ref = 'HEAD',
+  to?: string,
+): Promise<GitDiff> =>
   inRepo(root, async (git) => {
     const rel = relPath(root, path);
-    const abs = resolveInSpace(root, rel);
-    const size = await stat(abs).catch(() => null);
-    if (size?.isDirectory())
-      throw new AppError('NOT_A_FILE', `"${rel}" is a directory`, 400);
-    const oldSize = Number(
-      await git.raw(['cat-file', '-s', `${ref}:${rel}`]).catch(() => '0'),
-    );
-    if ((size?.size ?? 0) > MAX_DIFF_BYTES || oldSize > MAX_DIFF_BYTES)
+    const blobSize = (r: string) =>
+      git.raw(['cat-file', '-s', `${r}:${rel}`]).then(Number, () => 0);
+    let newSize: number;
+    if (to === undefined) {
+      const st = await stat(resolveInSpace(root, rel)).catch(() => null);
+      if (st?.isDirectory())
+        throw new AppError('NOT_A_FILE', `"${rel}" is a directory`, 400);
+      newSize = st ? st.size : -1;
+    } else newSize = await blobSize(to);
+    if (newSize > MAX_DIFF_BYTES || (await blobSize(ref)) > MAX_DIFF_BYTES)
       return { path: rel, old: '', new: '', tooLarge: true };
-    const old = await git.raw(['show', `${ref}:${rel}`]).catch(() => '');
-    const cur = size ? await readFile(abs, 'utf8') : '';
+    const show = (r: string) =>
+      git.raw(['show', `${r}:${rel}`]).catch(() => '');
+    const old = await show(ref);
+    const cur =
+      to !== undefined
+        ? await show(to)
+        : newSize >= 0
+          ? await readFile(resolveInSpace(root, rel), 'utf8')
+          : '';
     if (old.includes('\0') || cur.includes('\0'))
       return { path: rel, old: '', new: '', binary: true };
     return { path: rel, old, new: cur };
@@ -118,7 +128,9 @@ export const gitDiff = (root: string, path: string, ref = 'HEAD'): Promise<GitDi
 export const gitLog = (root: string, limit: number): Promise<GitCommit[]> =>
   inRepo(root, async (git) => {
     const n = Number.isFinite(limit) ? Math.min(Math.max(1, limit), 200) : 30;
-    if (!(await git.raw(['rev-parse', '--verify', '-q', 'HEAD']).catch(() => '')))
+    if (
+      !(await git.raw(['rev-parse', '--verify', '-q', 'HEAD']).catch(() => ''))
+    )
       return []; // unborn HEAD: no commits yet
     const log = await git.log({ maxCount: n });
     return log.all.map((c) => ({
@@ -154,7 +166,8 @@ export const gitCommit = (
         existsSync(resolveInSpace(root, r)) ||
         tracked.some((t) => t === r || t.startsWith(`${r}/`)),
     );
-    if (!rels.length || addable.length) await git.raw(['add', '-A', ...(rels.length ? ['--', ...addable] : [])]);
+    if (!rels.length || addable.length)
+      await git.raw(['add', '-A', ...(rels.length ? ['--', ...addable] : [])]);
     // with paths, `commit -- paths` leaves other staged files out of the commit
     if (!(await git.raw(['diff', '--cached', '--name-only', ...only])).trim())
       throw new AppError('NOTHING_TO_COMMIT', 'Nothing to commit', 409);
@@ -169,9 +182,11 @@ export const gitCreateBranch = (
 ): Promise<GitStatus> =>
   inRepo(root, async (git) => {
     const start = from === undefined ? [] : [branchName(from)];
-    await git.raw(['check-ref-format', '--branch', branchName(name)]).catch(() => {
-      throw invalidBranch(name);
-    });
+    await git
+      .raw(['check-ref-format', '--branch', branchName(name)])
+      .catch(() => {
+        throw invalidBranch(name);
+      });
     await git.raw(['branch', name, ...start]);
     return statusOf(git);
   });

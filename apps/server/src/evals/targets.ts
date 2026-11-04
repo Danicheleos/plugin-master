@@ -7,6 +7,7 @@ import type {
   EvalTarget,
   EvalTargetsResponse,
 } from '@pm/protocol';
+import { mean } from '@pm/protocol';
 import { resolveInSpace } from '../files/safe-path';
 import { readSuite } from './suite';
 import { listSuites } from './results';
@@ -114,7 +115,6 @@ const KEYS = [
   'tokens',
   'durationMs',
 ] as const;
-const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
 /** Per metric over the defined values: mean per case, except `maxContext` = max. */
 function aggregate(rows: Metrics[]): Metrics {
@@ -123,17 +123,12 @@ function aggregate(rows: Metrics[]): Metrics {
     const vs = rows.flatMap((r) =>
       r[k] === undefined ? [] : [r[k] as number],
     );
-    if (vs.length) out[k] = k === 'maxContext' ? Math.max(...vs) : mean(vs);
+    if (vs.length) out[k] = k === 'maxContext' ? Math.max(...vs) : mean(vs)!;
   }
   return out;
 }
 
 /** Every run of one case in the main suites (one row per run id), newest first (pure). */
-export const caseRuns = (
-  suites: EvalSuiteEntry[],
-  name: string,
-): EvalCaseRun[] => aggregateRuns(suites, [name]);
-
 /** Cases that have runs in a main suite; the other suites only supply cases that exist nowhere else (baseline-only cases). */
 const mainCases = (suites: EvalSuiteEntry[]) =>
   new Set(
@@ -219,18 +214,24 @@ export async function listTargets(root: string): Promise<EvalTargetsResponse> {
   for (const name of [...mainCases(suites.suites)].sort())
     if (!onDisk.has(name)) unmapped.push(name);
   const runs = (cases: string[]) => aggregateRuns(suites.suites, cases);
-  const lastRun = new Map<string, string>();
+  // the case entry (baseline sections, pin, trend) of a main suite, else of the suite that alone has the case
+  const entries = new Map<string, EvalCaseEntry>();
   const inMain = mainCases(suites.suites);
   for (const s of suites.suites)
     for (const c of s.cases)
-      if (s.kind === 'main' || !inMain.has(c.name))
-        lastRun.set(c.name, c.latest.runId);
-  const refs = (cases: string[]) =>
-    cases.map((name) => ({
-      name,
-      lastRunId: lastRun.get(name),
-      runs: caseRuns(suites.suites, name),
-    }));
+      if ((s.kind === 'main' || !inMain.has(c.name)) && !entries.has(c.name))
+        entries.set(c.name, c);
+  const refs = (cases: string[]): EvalCaseEntry[] =>
+    cases.map(
+      (name) =>
+        entries.get(name) ?? {
+          name,
+          runCount: 0,
+          latest: { runId: '', model: null },
+          trend: [],
+          sections: [],
+        },
+    );
   return {
     targets: await Promise.all(
       targets.map(

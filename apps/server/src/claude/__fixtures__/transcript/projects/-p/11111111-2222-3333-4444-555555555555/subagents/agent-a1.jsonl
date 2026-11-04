@@ -1,0 +1,4 @@
+{"type":"user","isSidechain":true,"agentId":"a1","message":{"role":"user","content":"read it"}}
+{"type":"assistant","isSidechain":true,"agentId":"a1","message":{"id":"s1","content":[{"type":"tool_use","id":"toolu_R","name":"Read","input":{"file_path":"skills/x/SKILL.md"}}],"usage":{"input_tokens":50,"output_tokens":3}}}
+{"type":"user","isSidechain":true,"agentId":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_R","content":"# x"}]}}
+{"type":"assistant","isSidechain":true,"agentId":"a1","message":{"id":"s2","content":[{"type":"text","text":"it is short"}],"usage":{"input_tokens":60,"output_tokens":4}}}

@@ -1,0 +1,6 @@
+{"type":"attachment","attachment":{"type":"prompt_snapshot","systemPrompt":["You are the master.","Pinned files."]},"sessionId":"11111111-2222-3333-4444-555555555555"}
+{"type":"attachment","attachment":{"type":"hook_additional_context","content":"checklist"}}
+{"type":"user","message":{"role":"user","content":"look at the skill"},"sessionId":"11111111-2222-3333-4444-555555555555"}
+{"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"toolu_A","name":"Agent","input":{"subagent_type":"reader","description":"Read skill","prompt":"read it"}}],"usage":{"input_tokens":100,"output_tokens":10}}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_A","content":"it is short"}]}}
+{"type":"assistant","message":{"id":"m2","content":[{"type":"text","text":"The skill is short."}],"usage":{"input_tokens":150,"output_tokens":5}}}

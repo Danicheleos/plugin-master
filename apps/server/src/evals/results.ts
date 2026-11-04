@@ -39,10 +39,14 @@ async function runIds(base: string, rel = '', depth = 1): Promise<string[]> {
   return ids;
 }
 
-export const isFileId = (id: string) => id.endsWith('.json') && !id.includes('/');
+export const isFileId = (id: string) =>
+  id.endsWith('.json') && !id.includes('/');
 
 /** Every run id under `base`: nested run dirs plus top-level result files. */
-export const allIds = async (base: string) => [...(await runIds(base)), ...(await fileIds(base))];
+export const allIds = async (base: string) => [
+  ...(await runIds(base)),
+  ...(await fileIds(base)),
+];
 
 /** Top-level `results/*.json` files with a `schemaVersion` (e.g. a harness' `bare.json`): runs whose id is the file name. */
 async function fileIds(base: string): Promise<string[]> {
@@ -53,7 +57,9 @@ async function fileIds(base: string): Promise<string[]> {
       .map(async (e) => {
         try {
           const j = JSON.parse(await readFile(join(base, e.name), 'utf8'));
-          return j && typeof j === 'object' && 'schemaVersion' in j ? [e.name] : [];
+          return j && typeof j === 'object' && 'schemaVersion' in j
+            ? [e.name]
+            : [];
         } catch {
           return [];
         }
@@ -90,9 +96,15 @@ const inRun = (root: string, dir: string, name: string) =>
 
 /** The result file of a run: `<id>/aggregate-result.json`, or the file itself for a `*.json` id. */
 const resultFile = (root: string, base: string, id: string) =>
-  isFileId(id) ? inRun(root, base, id) : inRun(root, join(base, id), RESULT_FILE);
+  isFileId(id)
+    ? inRun(root, base, id)
+    : inRun(root, join(base, id), RESULT_FILE);
 
-export async function parseRun(root: string, base: string, id: string): Promise<EvalResult> {
+export async function parseRun(
+  root: string,
+  base: string,
+  id: string,
+): Promise<EvalResult> {
   const raw = await readFile(resultFile(root, base, id), 'utf8');
   return EvalResultSchema.parse(JSON.parse(raw));
 }
@@ -106,7 +118,10 @@ export async function loadRuns(root: string): Promise<RunInput[]> {
         !isFileId(id) &&
         (await Promise.resolve()
           .then(() => stat(inRun(root, join(base, id), 'report.html')))
-          .then((s) => s.isFile(), () => false));
+          .then(
+            (s) => s.isFile(),
+            () => false,
+          ));
       try {
         const r = await parseRun(root, base, id);
         return {
@@ -119,7 +134,11 @@ export async function loadRuns(root: string): Promise<RunInput[]> {
         };
       } catch (e) {
         return {
-          summary: { id, error: e instanceof Error ? e.message : String(e), hasReport },
+          summary: {
+            id,
+            error: e instanceof Error ? e.message : String(e),
+            hasReport,
+          },
           cases: [],
         };
       }
@@ -127,21 +146,45 @@ export async function loadRuns(root: string): Promise<RunInput[]> {
   );
 }
 
-export { mean };
-
 /** Mean metrics of one arm's runs; `score`/`passRate` prefer the harness' aggregates. */
-function armMetrics(arm: EvalResult['cases'][number]['arms']['with'], score?: number, passRate?: number) {
+function armMetrics(
+  arm: EvalResult['cases'][number]['arms']['with'],
+  score?: number,
+  passRate?: number,
+) {
   return {
     score: score ?? mean(arm.map((x) => x.score)),
-    costUsd: mean(arm.map((x) => (x.costUsd === undefined ? undefined : x.costUsd + (x.judgeCostUsd ?? 0)))),
+    costUsd: mean(
+      arm.map((x) =>
+        x.costUsd === undefined ? undefined : x.costUsd + (x.judgeCostUsd ?? 0),
+      ),
+    ),
     turns: mean(arm.map((x) => x.traceMetrics?.numTurns ?? x.turns)),
     maxContext: mean(arm.map((x) => x.traceMetrics?.maxContext)),
-    tokens: mean(arm.map((x) => x.traceMetrics && x.traceMetrics.inputTokens + x.traceMetrics.outputTokens)),
-    durationMs: mean(arm.map((x) => x.traceMetrics?.durationMs ?? (x.durationSeconds === undefined ? undefined : x.durationSeconds * 1000))),
+    tokens: mean(
+      arm.map(
+        (x) =>
+          x.traceMetrics &&
+          x.traceMetrics.inputTokens + x.traceMetrics.outputTokens,
+      ),
+    ),
+    durationMs: mean(
+      arm.map(
+        (x) =>
+          x.traceMetrics?.durationMs ??
+          (x.durationSeconds === undefined
+            ? undefined
+            : x.durationSeconds * 1000),
+      ),
+    ),
     recall: mean(arm.map((x) => x.metrics?.recall ?? undefined)),
     precision: mean(arm.map((x) => x.metrics?.precision ?? undefined)),
     f1: mean(arm.map((x) => x.metrics?.f1 ?? undefined)),
-    passRate: passRate ?? mean(arm.map((x) => (x.passed === undefined ? undefined : Number(x.passed)))),
+    passRate:
+      passRate ??
+      mean(
+        arm.map((x) => (x.passed === undefined ? undefined : Number(x.passed))),
+      ),
   };
 }
 
@@ -158,12 +201,18 @@ async function loadSuiteRuns(root: string): Promise<SuiteRun[]> {
             id,
             startedAt: r.startedAt,
             model: r.suite.modelOverride ?? null,
-            commit: isFileId(id) ? undefined : (await readMeta(root, await evalDir(root), id))?.commit,
+            commit: isFileId(id)
+              ? undefined
+              : (await readMeta(root, await evalDir(root), id))?.commit,
             plugin: r.suite.plugins?.[0]?.name,
             caseDirs: r.cases.flatMap((c) => (c.dir ? [c.dir] : [])),
             cases: r.cases.map((c) => ({
               name: c.name,
-              ...armMetrics(c.arms.with, c.aggregates.score, c.aggregates.passRate),
+              ...armMetrics(
+                c.arms.with,
+                c.aggregates.score,
+                c.aggregates.passRate,
+              ),
               without: c.arms.without.length
                 ? armMetrics(c.arms.without, c.aggregates.scoreWithout)
                 : undefined,
@@ -186,7 +235,11 @@ async function readConfigPins(root: string) {
 export async function listSuites(root: string): Promise<EvalSuitesResponse> {
   return {
     dir: await evalDir(root),
-    suites: buildSuites(await loadSuiteRuns(root), await pluginName(root), ...(await readConfigPins(root))),
+    suites: buildSuites(
+      await loadSuiteRuns(root),
+      await pluginName(root),
+      ...(await readConfigPins(root)),
+    ),
   };
 }
 
@@ -195,19 +248,35 @@ export async function listGroups(root: string): Promise<EvalGroup[]> {
   return groupRuns(await loadRuns(root));
 }
 
-export async function readGroup(root: string, groupId: string): Promise<EvalGroupResponse> {
+export async function readGroup(
+  root: string,
+  groupId: string,
+): Promise<EvalGroupResponse> {
   // any member id resolves its group: the id (first run) changes when an earlier run lands later
-  const group = (await listGroups(root)).find((g) => g.runIds.includes(groupId));
+  const group = (await listGroups(root)).find((g) =>
+    g.runIds.includes(groupId),
+  );
   if (!group) throw new AppError('RUN_NOT_FOUND', 'Eval group not found', 404);
   const result = await readMerged(root, group, true);
-  return { id: group.id, group, unknownSchema: result.schemaVersion !== 1, result };
+  return {
+    id: group.id,
+    group,
+    unknownSchema: result.schemaVersion !== 1,
+    result,
+  };
 }
 
 /** The merged result of a group (see `mergeGroup`; `all` keeps every invocation); throws when a run is unreadable. */
-export async function readMerged(root: string, group: EvalGroup, all = false): Promise<EvalResult> {
+export async function readMerged(
+  root: string,
+  group: EvalGroup,
+  all = false,
+): Promise<EvalResult> {
   const results = new Map(
     await Promise.all(
-      group.runIds.map(async (id) => [id, (await readRun(root, id)).result] as const),
+      group.runIds.map(
+        async (id) => [id, (await readRun(root, id)).result] as const,
+      ),
     ),
   );
   return mergeGroup(group, results, all);
@@ -224,7 +293,10 @@ async function runDir(root: string, runId: string): Promise<string> {
   return resolveInSpace(root, `${await evalDir(root)}/results/${runId}`);
 }
 
-export async function readRun(root: string, runId: string): Promise<EvalRunResponse> {
+export async function readRun(
+  root: string,
+  runId: string,
+): Promise<EvalRunResponse> {
   await runDir(root, runId); // validates the id
   const base = await resultsRoot(root);
   try {
@@ -240,7 +312,8 @@ export async function readRun(root: string, runId: string): Promise<EvalRunRespo
 
 export async function readReport(root: string, runId: string): Promise<string> {
   const dir = await runDir(root, runId);
-  if (isFileId(runId)) throw new AppError('REPORT_NOT_FOUND', 'Report not found', 404);
+  if (isFileId(runId))
+    throw new AppError('REPORT_NOT_FOUND', 'Report not found', 404);
   return readFile(inRun(root, dir, 'report.html'), 'utf8').catch(() => {
     throw new AppError('REPORT_NOT_FOUND', 'Report not found', 404);
   });

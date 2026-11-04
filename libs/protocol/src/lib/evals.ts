@@ -82,7 +82,11 @@ export const EvalResultSchema = loose({
     ablation: z.string().optional(),
     modelOverride: z.string().nullable().optional(),
     threshold: z.number().nullable().optional(),
-    plugins: z.array(loose({ name: z.string().optional(), version: z.string().optional() })).optional(),
+    plugins: z
+      .array(
+        loose({ name: z.string().optional(), version: z.string().optional() }),
+      )
+      .optional(),
   }).default({}),
   cases: z.array(EvalCaseSchema).default([]),
   aggregates: loose({
@@ -245,8 +249,8 @@ export const EvalBaselineSectionSchema = z.object({
       after: z.boolean(),
       /** The user's pin, not the auto-picked baseline. */
       pinned: z.boolean().optional(),
-  /** Labels of `evalRefs` that point at this run. */
-  refs: z.array(z.string()).optional(),
+      /** Labels of `evalRefs` that point at this run. */
+      refs: z.array(z.string()).optional(),
     })
     .optional(),
   runs: z.array(EvalCaseRunSchema),
@@ -297,8 +301,8 @@ export type EvalSuitesResponse = z.infer<typeof EvalSuitesResponseSchema>;
  */
 export const EvalTargetSchema = z.object({
   name: z.string(),
-  /** `lastRunId`: the case's latest run, to open it; `runs`: every run of the case in the main suites, newest first. */
-  cases: z.array(z.object({ name: z.string(), lastRunId: z.string().optional(), runs: z.array(EvalCaseRunSchema).default([]) })),
+  /** The case entries of the suites view (main suite, else the suite that alone has the case); a case never run has no sections. */
+  cases: z.array(EvalCaseEntrySchema),
   runs: z.array(EvalCaseRunSchema),
   /** Bytes of `skills/<name>/SKILL.md` or `agents/<name>.md` in the working tree. */
   contextBytes: z.number().optional(),
@@ -306,7 +310,9 @@ export const EvalTargetSchema = z.object({
 export type EvalTarget = z.infer<typeof EvalTargetSchema>;
 
 export const EvalTargetsResponseSchema = z.object({
-  targets: z.array(EvalTargetSchema.extend({ kind: z.enum(['skill', 'agent']) })),
+  targets: z.array(
+    EvalTargetSchema.extend({ kind: z.enum(['skill', 'agent']) }),
+  ),
   /** Cases that name no skill or agent. */
   unmapped: EvalTargetSchema,
 });
@@ -356,7 +362,9 @@ export const EvalSuiteCaseSchema = z.object({
   description: z.string().optional(),
   tags: z.array(z.string()),
   /** `tool_used` graders (case.yaml and graders/*.md): used to map the case to skills/agents. */
-  toolGraders: z.array(z.object({ tool: z.string(), inputMatch: z.string().optional() })).optional(),
+  toolGraders: z
+    .array(z.object({ tool: z.string(), inputMatch: z.string().optional() }))
+    .optional(),
   /** The case does not parse: it is listed but not selectable by tag. */
   error: z.string().optional(),
 });
@@ -372,7 +380,8 @@ export const EvalTrustSchema = z.object({ trusted: z.boolean() });
 
 export type EvalState = 'idle' | 'running' | 'done' | 'failed' | 'cancelled';
 /** State of one case (one CLI invocation) of a run. */
-export type EvalCaseState = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+export type EvalCaseState =
+  'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 export type EvalProgress = {
   total: number;
   /** Cases that are no longer queued or running. */

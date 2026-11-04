@@ -1,9 +1,5 @@
 import { mean, sd, type SuiteDelta } from '@pm/protocol';
 
-/** Paired delta (head - base) of a case; needs a mean on both sides. */
-export const pairedDelta = (base?: number, head?: number) =>
-  base === undefined || head === undefined ? undefined : head - base;
-
 /** Two-sided 95% t quantiles for df 1..3 (the t-interval is used below BOOTSTRAP_MIN cases). */
 const T95 = [12.706, 4.303, 3.182];
 /** Cases needed for the bootstrap; below this the t-interval is used (it is wide, so usually inconclusive). */
@@ -31,7 +27,8 @@ function rng(seed: number) {
 export function suiteDelta(deltas: (number | undefined)[]): SuiteDelta {
   const d = deltas.filter((x): x is number => x !== undefined);
   const n = d.length;
-  if (n < 2) return { cases: n, ...(n && { mean: d[0] }), verdict: 'inconclusive' };
+  if (n < 2)
+    return { cases: n, ...(n && { mean: d[0] }), verdict: 'inconclusive' };
   const m = mean(d)!;
   let ci: [number, number];
   if (n < BOOTSTRAP_MIN) {
@@ -44,15 +41,34 @@ export function suiteDelta(deltas: (number | undefined)[]): SuiteDelta {
       for (let i = 0; i < n; i++) s += d[Math.floor(rand() * n)];
       return s / n;
     }).sort((a, b) => a - b);
-    ci = [means[Math.floor(0.025 * RESAMPLES)], means[Math.ceil(0.975 * RESAMPLES) - 1]];
+    ci = [
+      means[Math.floor(0.025 * RESAMPLES)],
+      means[Math.ceil(0.975 * RESAMPLES) - 1],
+    ];
   }
-  const verdict = ci[0] > 0 ? 'improved' : ci[1] < 0 ? 'regressed' : 'inconclusive';
+  const verdict =
+    ci[0] > 0 ? 'improved' : ci[1] < 0 ? 'regressed' : 'inconclusive';
   return { cases: n, mean: m, ci, verdict };
 }
 
 /** Two-sided 95% t quantiles for df 1..10, 15, 20, 30 (floor of the df, so slightly conservative; above 30 uses 2.042). */
-const T_DF: [number, number][] = [[1, 12.706], [2, 4.303], [3, 3.182], [4, 2.776], [5, 2.571], [6, 2.447], [7, 2.365], [8, 2.306], [9, 2.262], [10, 2.228], [15, 2.131], [20, 2.086], [30, 2.042]];
-const tCrit = (df: number) => (T_DF.filter(([d]) => d <= df).pop() ?? T_DF[0])[1];
+const T_DF: [number, number][] = [
+  [1, 12.706],
+  [2, 4.303],
+  [3, 3.182],
+  [4, 2.776],
+  [5, 2.571],
+  [6, 2.447],
+  [7, 2.365],
+  [8, 2.306],
+  [9, 2.262],
+  [10, 2.228],
+  [15, 2.131],
+  [20, 2.086],
+  [30, 2.042],
+];
+const tCrit = (df: number) =>
+  (T_DF.filter(([d]) => d <= df).pop() ?? T_DF[0])[1];
 
 export type SideStat = { n?: number; mean?: number; sd?: number };
 
@@ -61,7 +77,13 @@ export type SideStat = { n?: number; mean?: number; sd?: number };
  * (head - base) lies entirely below 0. Equal spread-free sides (e.g. all-pass vs all-fail) qualify.
  */
 export function caseRegressed(base: SideStat, head: SideStat): boolean {
-  if (base.mean === undefined || head.mean === undefined || base.sd === undefined || head.sd === undefined) return false;
+  if (
+    base.mean === undefined ||
+    head.mean === undefined ||
+    base.sd === undefined ||
+    head.sd === undefined
+  )
+    return false;
   const [n1, n2] = [base.n ?? 0, head.n ?? 0];
   if (n1 < 2 || n2 < 2) return false;
   const [v1, v2] = [base.sd ** 2 / n1, head.sd ** 2 / n2];

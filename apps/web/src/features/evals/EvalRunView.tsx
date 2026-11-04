@@ -25,8 +25,8 @@ import { DataTable } from './DataTable';
 import { EvalCompare } from './EvalCompare';
 import { MetricGrid } from './MetricGrid';
 import { RunsTable } from './EvalSuitesList';
-import { MetricsLine, TraceModal } from './TraceView';
-import { TraceFlow } from './TraceFlow';
+import { MetricsLine, TraceBody, TraceModal } from './TraceView';
+import { ExportCasesButton } from './ExportCasesButton';
 import { runCaseColumns } from './columns';
 import { splitRepetitions, type RepCase } from './compare';
 import {
@@ -34,7 +34,6 @@ import {
   useEvalRun,
   useEvalSuites,
   useEvalTrace,
-  useExportCases,
   type TraceTarget,
 } from './hooks';
 import { useEvalPrefs, useOpen, useOpens } from './prefs';
@@ -73,7 +72,6 @@ export function EvalRunView({
   const [report, setReport] = useState<string | null>(null);
   const [trace, setTrace] = useState<TraceTarget | null>(null);
   const merged = data?.group;
-  const exporter = useExportCases(spaceId);
   return (
     <div>
       <Group mb="sm">
@@ -89,33 +87,16 @@ export function EvalRunView({
             Open HTML report
           </Button>
         )}
-        <Button
+        <ExportCasesButton
+          spaceId={spaceId}
           size="compact-sm"
-          variant="default"
-          loading={exporter.isPending}
-          disabled={!data}
-          onClick={() =>
-            exporter.mutate(
-              focusCase
-                ? [focusCase]
-                : (data?.result.cases.map((c) => c.name) ?? []),
-            )
+          label="Export case history"
+          cases={
+            focusCase
+              ? [focusCase]
+              : (data?.result.cases.map((c) => c.name) ?? [])
           }
-        >
-          Export case history
-        </Button>
-        {exporter.data && (
-          <Text size="xs" c="dimmed">
-            {exporter.data.exports
-              .map((e) => `${e.dir}: ${e.written} new, ${e.skipped} unchanged`)
-              .join(' · ')}
-          </Text>
-        )}
-        {exporter.error && (
-          <Text size="xs" c="red">
-            {exporter.error.message}
-          </Text>
-        )}
+        />
       </Group>
       {error && <Text c="red">{error.message}</Text>}
       {data && (
@@ -483,7 +464,7 @@ function InlineFlow({
   const { data, error } = useEvalTrace(spaceId, target);
   if (error) return <Text c="red">{error.message}</Text>;
   return data ? (
-    <TraceFlow trace={data} />
+    <TraceBody trace={data} />
   ) : (
     <Text size="sm" c="dimmed">
       Loading…

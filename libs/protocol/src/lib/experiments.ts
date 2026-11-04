@@ -2,7 +2,13 @@ import { z } from 'zod';
 import type { GitDiff } from './git.js';
 import { CaseCompareSchema, SuiteDeltaSchema } from './stats.js';
 
-export const LOOP_STAGES = ['hypothesis', 'execute', 'eval', 'analyze', 'propose'] as const;
+export const LOOP_STAGES = [
+  'hypothesis',
+  'execute',
+  'eval',
+  'analyze',
+  'propose',
+] as const;
 export type LoopStage = (typeof LOOP_STAGES)[number];
 
 /** Progress of one loop stage; `runId` = the recorded SDK run (stages) or the eval run dir in the worktree. */
@@ -22,6 +28,7 @@ function oldCaseRow(row: unknown): unknown {
   return {
     name: r.case,
     from: { score: r.baselineScore, runs: r.baselineN, sd: r.baselineSd },
+    // old `flaky` meant either side; kept on `to`, the views show it for either
     to: { score: r.score, runs: r.n, sd: r.sd, flaky: r.flaky },
     delta: r.delta,
   };
@@ -63,7 +70,14 @@ export const DescriptionResultSchema = z.object({
 });
 export type DescriptionResult = z.infer<typeof DescriptionResultSchema>;
 
-export const EXPERIMENT_STATUSES = ['created', 'running', 'ready', 'merged', 'discarded', 'failed'] as const;
+export const EXPERIMENT_STATUSES = [
+  'created',
+  'running',
+  'ready',
+  'merged',
+  'discarded',
+  'failed',
+] as const;
 
 /** `.plugin-master/experiments/<n>.json`: one experiment = branch `exp/<n>` in its own git worktree. */
 export const ExperimentSchema = z.object({
@@ -106,7 +120,9 @@ export const ExperimentSchema = z.object({
 });
 export type Experiment = z.infer<typeof ExperimentSchema>;
 
-export const CreateExperimentSchema = z.object({ hypothesis: z.string().trim().min(1).optional() });
+export const CreateExperimentSchema = z.object({
+  hypothesis: z.string().trim().min(1).optional(),
+});
 
 /** Files changed between base and the worktree (committed and uncommitted), at most 200. */
 export type ExperimentDiff = { files: GitDiff[]; truncated?: boolean };
@@ -149,7 +165,10 @@ export const RunExperimentSchema = z
     cases: z.array(z.string().min(1).regex(/^[^-]/)).max(200).optional(),
     kind: z.enum(EXPERIMENT_KINDS).optional(),
     /** description: the skill directory name under `skills/` */
-    skill: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/).optional(),
+    skill: z
+      .string()
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/)
+      .optional(),
     /** description: proposer rounds, default 3 */
     iterations: z.number().int().min(1).max(5).optional(),
     /** Pass `--scaffold` to the eval stage (scaffold scripts run as the user). */
@@ -157,7 +176,10 @@ export const RunExperimentSchema = z
     /** Eval runs per case; default 3 (single runs cannot tell a change from noise). */
     runs: z.number().int().min(1).max(10).optional(),
   })
-  .refine((r) => r.kind !== 'description' || !!r.skill, { message: 'skill is required', path: ['skill'] });
+  .refine((r) => r.kind !== 'description' || !!r.skill, {
+    message: 'skill is required',
+    path: ['skill'],
+  });
 export type RunExperiment = z.infer<typeof RunExperimentSchema>;
 
 export const TRIGGER_TAG = 'trigger';
@@ -165,9 +187,14 @@ export const HOLDOUT_TAG = 'holdout';
 export const MAX_DESCRIPTION = 1024;
 
 /** Trigger cases (tag `trigger`, parsable) split into train and hold-out (also tagged `holdout`); names only. */
-export function splitTriggerCases(cases: { name: string; tags: string[]; error?: string }[]) {
+export function splitTriggerCases(
+  cases: { name: string; tags: string[]; error?: string }[],
+) {
   const trigger = cases.filter((c) => !c.error && c.tags.includes(TRIGGER_TAG));
-  const names = (hold: boolean) => trigger.filter((c) => c.tags.includes(HOLDOUT_TAG) === hold).map((c) => c.name);
+  const names = (hold: boolean) =>
+    trigger
+      .filter((c) => c.tags.includes(HOLDOUT_TAG) === hold)
+      .map((c) => c.name);
   return { train: names(false), holdout: names(true) };
 }
 

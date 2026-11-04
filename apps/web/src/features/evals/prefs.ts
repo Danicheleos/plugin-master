@@ -49,6 +49,9 @@ const PrefsSchema = z.object({
 });
 export type EvalPrefs = z.infer<typeof PrefsSchema>;
 
+/** Invocations column ids before they came from the shared metric columns. */
+const RENAMED: Record<string, string> = { cost: 'costUsd', time: 'durationMs' };
+
 const storeKey = (scope: string) => `pm.evals.${scope}`;
 const entries = new Map<string, { raw: string | null; prefs: EvalPrefs }>();
 const listeners = new Set<() => void>();
@@ -61,7 +64,10 @@ function parse(raw: string | null): EvalPrefs {
     json = {};
   }
   const r = PrefsSchema.safeParse(json);
-  return r.success ? r.data : PrefsSchema.parse({});
+  const prefs = r.success ? r.data : PrefsSchema.parse({});
+  const inv = prefs.columns.invocations;
+  if (inv) prefs.columns.invocations = inv.map((id) => RENAMED[id] ?? id);
+  return prefs;
 }
 
 /** Stable snapshot: the same object until the stored value or a write changes it. */

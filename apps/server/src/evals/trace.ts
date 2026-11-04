@@ -45,7 +45,11 @@ const contextOf = (u: Usage = {}) =>
   num(u.cache_read_input_tokens) +
   num(u.cache_creation_input_tokens);
 
-const pretty = (v: unknown) => cut(typeof v === 'string' ? v : JSON.stringify(v, null, 2) ?? '', EXCERPT_CHARS);
+const pretty = (v: unknown) =>
+  cut(
+    typeof v === 'string' ? v : (JSON.stringify(v, null, 2) ?? ''),
+    EXCERPT_CHARS,
+  );
 
 /** One entry before the first model call (init, hook output, attachment, user message); null for noise. */
 function preambleItem(m: Msg): { kind: string; text: string } | null {
@@ -56,18 +60,35 @@ function preambleItem(m: Msg): { kind: string; text: string } | null {
     }
     if (m.subtype === 'hook_response') {
       const out = String(m.output ?? m.stdout ?? '').trim();
-      return out && out !== '{}' ? { kind: `hook ${m.hook_name ?? ''}`.trim(), text: cut(out, EXCERPT_CHARS) } : null;
+      return out && out !== '{}'
+        ? {
+            kind: `hook ${m.hook_name ?? ''}`.trim(),
+            text: cut(out, EXCERPT_CHARS),
+          }
+        : null;
     }
     return null;
   }
-  if (m.type === 'attachment' && m.attachment && typeof m.attachment === 'object') {
-    const { type, text, content, ...rest } = m.attachment as Record<string, unknown>;
+  if (
+    m.type === 'attachment' &&
+    m.attachment &&
+    typeof m.attachment === 'object'
+  ) {
+    const { type, text, content, ...rest } = m.attachment as Record<
+      string,
+      unknown
+    >;
     const body = text ?? content ?? (Object.keys(rest).length ? rest : '');
     return { kind: String(type ?? 'attachment'), text: pretty(body) };
   }
   if (m.type === 'user' && m.parent_tool_use_id == null) {
     const text = textOf(m.message?.content).trim();
-    return text ? { kind: m.isMeta ? 'user (meta)' : 'user', text: cut(text, EXCERPT_CHARS) } : null;
+    return text
+      ? {
+          kind: m.isMeta ? 'user (meta)' : 'user',
+          text: cut(text, EXCERPT_CHARS),
+        }
+      : null;
   }
   return null;
 }
@@ -111,16 +132,28 @@ export function parseTrace(text: string): Trace {
     const parent = m.parent_tool_use_id ?? null;
 
     if (m.type === 'assistant' && parent === null) started = true;
-    if (m.type === 'attachment' && m.attachment?.type === 'prompt_snapshot' && system === undefined) {
+    if (
+      m.type === 'attachment' &&
+      m.attachment?.type === 'prompt_snapshot' &&
+      parent === null &&
+      system === undefined
+    ) {
       const sp = m.attachment.systemPrompt;
-      system = cut(Array.isArray(sp) ? sp.map(String).join('\n\n---\n\n') : String(sp ?? ''), SYSTEM_CHARS);
+      system = cut(
+        Array.isArray(sp)
+          ? sp.map(String).join('\n\n---\n\n')
+          : String(sp ?? ''),
+        SYSTEM_CHARS,
+      );
     } else if (!started && items.length < MAX_PREAMBLE) {
       const item = preambleItem(m);
       if (item) items.push(item);
     }
 
     if (m.type === 'assistant' && m.message) {
-      const id = m.message.id ?? (typeof m.uuid === 'string' ? m.uuid : `line-${turnById.size}`);
+      const id =
+        m.message.id ??
+        (typeof m.uuid === 'string' ? m.uuid : `line-${turnById.size}`);
       let turn = turnById.get(id);
       if (!turn) {
         turn = { id, context: 0, outputTokens: 0, tools: [] };
@@ -130,7 +163,8 @@ export function parseTrace(text: string): Trace {
       // entries of one API call repeat its usage; the last one is the final value
       if (m.message.usage) usageByTurn.set(turn, m.message.usage);
       for (const b of blocksOf(m.message.content)) {
-        if (b.type === 'text' && b.text) turn.text = (turn.text ?? '') + String(b.text);
+        if (b.type === 'text' && b.text)
+          turn.text = (turn.text ?? '') + String(b.text);
         else if (b.type === 'thinking' && b.thinking)
           turn.thinking = (turn.thinking ?? '') + String(b.thinking);
         else if (b.type === 'tool_use' && !toolById.has(String(b.id))) {
@@ -146,18 +180,31 @@ export function parseTrace(text: string): Trace {
         }
       }
     } else if (m.type === 'user') {
-      const said = parent === null && prompt === undefined ? textOf(m.message?.content).trim() : '';
+      const said =
+        parent === null && prompt === undefined
+          ? textOf(m.message?.content).trim()
+          : '';
       if (said) prompt = cut(said, EXCERPT_CHARS);
       for (const b of blocksOf(m.message?.content)) {
-        const tool = b.type === 'tool_result' ? toolById.get(String(b.tool_use_id)) : undefined;
+        const tool =
+          b.type === 'tool_result'
+            ? toolById.get(String(b.tool_use_id))
+            : undefined;
         if (!tool) continue;
         const isError = b.is_error === true;
-        tool.result = { preview: cut(textOf(b.content), PREVIEW_CHARS), isError };
+        tool.result = {
+          preview: cut(textOf(b.content), PREVIEW_CHARS),
+          isError,
+        };
         if (isError) toolErrors++;
       }
     } else if (m.type === 'system') {
-      if (m.subtype === 'init') model = typeof m.model === 'string' ? m.model : model;
-      else if (typeof m.tool_use_id === 'string' && m.subtype?.startsWith('task_')) {
+      if (m.subtype === 'init')
+        model = typeof m.model === 'string' ? m.model : model;
+      else if (
+        typeof m.tool_use_id === 'string' &&
+        m.subtype?.startsWith('task_')
+      ) {
         const s = subagent(m.tool_use_id);
         if (m.subtype === 'task_started') {
           s.description = m.description;
@@ -205,7 +252,9 @@ export function parseTrace(text: string): Trace {
     finalContext: contexts.at(-1) ?? 0,
     inputTokens: total('input_tokens', (u) => num(u.input_tokens)),
     outputTokens: total('output_tokens', (u) => num(u.output_tokens)),
-    cacheReadTokens: total('cache_read_input_tokens', (u) => num(u.cache_read_input_tokens)),
+    cacheReadTokens: total('cache_read_input_tokens', (u) =>
+      num(u.cache_read_input_tokens),
+    ),
     cacheCreationTokens: total('cache_creation_input_tokens', (u) =>
       num(u.cache_creation_input_tokens),
     ),
@@ -223,6 +272,8 @@ export function parseTrace(text: string): Trace {
     metrics,
     turns: top,
     ...(prompt && { prompt }),
-    ...((system || items.length) && { preamble: { ...(system && { system }), items } }),
+    ...((system || items.length) && {
+      preamble: { ...(system && { system }), items },
+    }),
   };
 }

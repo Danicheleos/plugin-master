@@ -1,8 +1,7 @@
 import { Text } from '@mantine/core';
 import { DataTable } from './DataTable';
 import { MetricGrid } from './MetricGrid';
-import { invocationColumns, invocationRow, type Invocation } from './columns';
-import type { MetricRun } from './metrics';
+import { invocationColumns, invocationRow } from './columns';
 import { useEvalRuns } from './hooks';
 import { useOpens } from './prefs';
 
@@ -11,19 +10,10 @@ type Props = { spaceId: string; onOpen: (id: string, group: boolean) => void };
 
 export const NoResults = ({ dir }: { dir: string }) => (
   <Text c="dimmed">
-    No eval results in <code>{dir}/results</code>. Run <code>claude plugin eval</code> in a
-    terminal.
+    No eval results in <code>{dir}/results</code>. Run{' '}
+    <code>claude plugin eval</code> in a terminal.
   </Text>
 );
-
-const asMetrics = (r: Invocation): MetricRun => ({
-  runId: r.id,
-  startedAt: r.startedAt,
-  score: r.score,
-  passRate: r.passRate,
-  costUsd: r.cost,
-  durationMs: r.durationSeconds === undefined ? undefined : r.durationSeconds * 1000,
-});
 
 export function EvalRunsList({ spaceId, onOpen }: Props) {
   const { data, error } = useEvalRuns(spaceId);
@@ -32,27 +22,30 @@ export function EvalRunsList({ spaceId, onOpen }: Props) {
   if (!data) return null;
   if (!data.groups.length) return <NoResults dir={data.dir} />;
   const rows = data.groups.map(invocationRow);
-  const columns = invocationColumns({ isOpen: (r) => isOpen(`inv:${r.id}`), toggle: (r) => toggle(`inv:${r.id}`) });
+  const columns = invocationColumns({
+    isOpen: (r) => isOpen(`inv:${r.runId}`),
+    toggle: (r) => toggle(`inv:${r.runId}`),
+  });
   return (
     <>
-      <MetricGrid runs={rows.map(asMetrics)} />
+      <MetricGrid runs={rows} />
       <DataTable
         kind="invocations"
         highlightOnHover
         columns={columns}
         rows={rows}
-        rowKey={(r) => r.id}
-        onRowClick={(r) => onOpen(r.id, r.many)}
+        rowKey={(r) => r.runId}
+        onRowClick={(r) => onOpen(r.runId, r.many)}
         detail={(r) =>
           r.sub &&
-          isOpen(`inv:${r.id}`) && (
+          isOpen(`inv:${r.runId}`) && (
             <DataTable
               kind="invocations"
               picker={false}
               columns={columns}
               rows={r.sub}
-              rowKey={(x) => x.id}
-              onRowClick={(x) => onOpen(x.id, false)}
+              rowKey={(x) => x.runId}
+              onRowClick={(x) => onOpen(x.runId, false)}
             />
           )
         }

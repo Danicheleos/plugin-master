@@ -1,8 +1,15 @@
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { ChatEvent } from '@pm/protocol';
-import { expect, it } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { expect, it, vi } from 'vitest';
 import { MAX_ITEMS, MessageList } from './MessageList';
+
+const request = vi.hoisted(() => vi.fn(() => new Promise(() => undefined)));
+vi.mock('../../api/http', async (orig) => ({
+  ...(await orig<object>()),
+  request,
+}));
 
 const renderList = (events: ChatEvent[]) =>
   render(
@@ -47,12 +54,64 @@ it('groups consecutive tool calls into a collapsed block', () => {
   expect(screen.getByText('Looking')).toBeTruthy();
   expect(screen.getByText('Finished')).toBeTruthy();
   const header = screen.getByText(/3 tool calls: Read ×2, Edit · 1 error/);
-  expect(screen.queryByText('🔧 Read')).toBeNull();
+  expect(screen.queryByText('Read')).toBeNull();
   fireEvent.click(header);
-  expect(screen.getAllByText('🔧 Read')).toHaveLength(2);
-  expect(screen.getByText('🔧 Edit')).toBeTruthy();
+  expect(screen.getAllByText('Read')).toHaveLength(2);
+  expect(screen.getByText('Edit')).toBeTruthy();
   fireEvent.click(screen.getByText(/3 tool calls/));
-  expect(screen.queryByText('🔧 Read')).toBeNull();
+  expect(screen.queryByText('Read')).toBeNull();
+});
+
+it('renders a call with its result as the shared trace tool row, Agent calls linking to the run trace', () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <MantineProvider>
+        <MessageList
+          spaceId="s"
+          sessionId="sess-1"
+          events={[
+            {
+              kind: 'tool_use',
+              id: '1',
+              name: 'Read',
+              input: { file_path: '/x/SKILL.md' },
+            },
+            {
+              kind: 'tool_use',
+              id: '2',
+              name: 'Agent',
+              input: { description: 'Review it', prompt: 'p' },
+            },
+            {
+              kind: 'tool_result',
+              toolUseId: '1',
+              isError: true,
+              preview: 'no such file',
+            },
+            {
+              kind: 'tool_result',
+              toolUseId: '2',
+              isError: false,
+              preview: 'looks fine',
+            },
+          ]}
+        />
+      </MantineProvider>
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByText(/2 tool calls/));
+  expect(screen.getByText('/x/SKILL.md')).toBeTruthy(); // describeTool summary
+  expect(screen.getByText('Review it')).toBeTruthy();
+  expect(screen.getByText('error')).toBeTruthy(); // the result's error is on the call row
+  fireEvent.click(screen.getAllByText('details')[0] as HTMLElement);
+  expect(screen.getByText('no such file')).toBeTruthy();
+  expect(screen.getAllByText('Open run trace')).toHaveLength(1);
+  fireEvent.click(screen.getByText('Open run trace'));
+  expect(screen.getByText('Run: sess-1')).toBeTruthy();
+  expect(request.mock.calls.at(-1)?.slice(0, 2)).toEqual([
+    'GET',
+    '/api/spaces/s/runs/sess-1/trace',
+  ]);
 });
 
 it('does not split a tool group at the MAX_ITEMS cut', () => {

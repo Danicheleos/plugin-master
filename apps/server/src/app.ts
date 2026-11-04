@@ -11,6 +11,7 @@ import { filesRoutes } from './files/routes';
 import { watchSpaces } from './files/watcher';
 import { registerApiToken, registerGuard } from './security/guard';
 import { sdkHistory, type History } from './claude/history';
+import { defaultProjectsDir } from './claude/transcript';
 import { sessionsRoutes } from './claude/routes';
 import { createSessionManager } from './claude/session-manager';
 import { createRecorder } from './runs/recorder';
@@ -72,15 +73,23 @@ export function buildApp(
   );
   const recorder = createRecorder((e) => app.log.error(e, 'run recorder'));
   const evalRunner = createEvalRunner(hub, spawnEval);
-  const chat = createSessionManager(hub, registry, undefined, history, recorder, {
-    runner: evalRunner,
-    busy: (spaceId) => experimentLoop.busy(spaceId),
-  });
+  const chat = createSessionManager(
+    hub,
+    registry,
+    undefined,
+    history,
+    recorder,
+    {
+      runner: evalRunner,
+      busy: (spaceId) => experimentLoop.busy(spaceId),
+    },
+  );
   const experimentLoop = createExperimentLoop({
     evalRunner,
     permissions: chat.permissions,
     recorder,
-    onChange: (spaceId) => hub.broadcast(spaceId, { type: 'experiments.changed', spaceId }),
+    onChange: (spaceId) =>
+      hub.broadcast(spaceId, { type: 'experiments.changed', spaceId }),
     onError: (e) => app.log.error(e, 'experiment loop'),
   });
   app.addHook('onClose', async () => {
@@ -96,7 +105,9 @@ export function buildApp(
       registerApiToken(api, config);
       await api.register(spacesRoutes(spaces));
       await api.register(filesRoutes(registry));
-      await api.register(evalsRoutes(registry, evalRunner, experimentLoop.busy));
+      await api.register(
+        evalsRoutes(registry, evalRunner, experimentLoop.busy),
+      );
       await api.register(
         plansRoutes(registry, (spaceId, root) =>
           createPlansService(root, () =>
@@ -104,12 +115,17 @@ export function buildApp(
           ),
         ),
       );
-      await api.register(sessionsRoutes(registry, history));
-      await api.register(runsRoutes(registry));
+      const projects = defaultProjectsDir(config.userHome);
+      await api.register(sessionsRoutes(registry, history, projects));
+      await api.register(runsRoutes(registry, projects));
       await api.register(hooksRoutes(registry));
       await api.register(
         featuresRoutes(registry, (spaceId, features) =>
-          hub.broadcast(spaceId, { type: 'features.changed', spaceId, features }),
+          hub.broadcast(spaceId, {
+            type: 'features.changed',
+            spaceId,
+            features,
+          }),
         ),
       );
       await api.register(
@@ -119,8 +135,11 @@ export function buildApp(
       );
       await api.register(versionsRoutes(registry));
       await api.register(
-        experimentsRoutes(registry, config.home, (spaceId) =>
-          hub.broadcast(spaceId, { type: 'experiments.changed', spaceId }),
+        experimentsRoutes(
+          registry,
+          config.home,
+          (spaceId) =>
+            hub.broadcast(spaceId, { type: 'experiments.changed', spaceId }),
           experimentLoop,
         ),
       );

@@ -1,10 +1,11 @@
-import { Anchor, Badge, Button, Group, Text } from '@mantine/core';
+import { Anchor, Badge, Group, Text } from '@mantine/core';
 import type { EvalTarget } from '@pm/protocol';
-import { CasesTable, entryFromRuns } from './EvalSuitesList';
+import { CasesTable } from './EvalSuitesList';
+import { ExportCasesButton } from './ExportCasesButton';
 import { deltaColor, type OpenCase } from './columns';
 import { MetricGrid } from './MetricGrid';
-import { useEvalTargets, useExportCases } from './hooks';
-import { useEvalPrefs, useOpen } from './prefs';
+import { useEvalTargets } from './hooks';
+import { useOpen } from './prefs';
 import { delta, score, scoreColor } from './format';
 import styles from './evals.module.scss';
 
@@ -20,7 +21,6 @@ export function EvalTargetsList({
   onOpen: OpenCase;
 }) {
   const { data, error } = useEvalTargets(spaceId);
-  const [{ limit: max }] = useEvalPrefs();
   if (error) return <Text c="red">{error.message}</Text>;
   if (!data) return null;
   if (!data.targets.length && !data.unmapped.cases.length)
@@ -39,17 +39,11 @@ export function EvalTargetsList({
           spaceId={spaceId}
           t={t}
           kind={t.kind}
-          limit={max}
           onOpen={onOpen}
         />
       ))}
       {data.unmapped.cases.length > 0 && (
-        <Target
-          spaceId={spaceId}
-          t={data.unmapped}
-          limit={max}
-          onOpen={onOpen}
-        />
+        <Target spaceId={spaceId} t={data.unmapped} onOpen={onOpen} />
       )}
     </>
   );
@@ -59,19 +53,16 @@ function Target({
   spaceId,
   t,
   kind,
-  limit,
   onOpen,
 }: {
   spaceId: string;
   t: EvalTarget;
   kind?: 'skill' | 'agent';
-  limit?: number;
   onOpen: OpenCase;
 }) {
   const key = `target:${kind ?? 'unmapped'}:${t.name}`;
   const [open, toggle] = useOpen(key);
   const latest = t.runs[0];
-  const exporter = useExportCases(spaceId);
   return (
     <section className={styles.suite}>
       <Group gap="xs" mb="xs">
@@ -98,26 +89,10 @@ function Target({
         <Text size="sm" c={deltaColor(latest?.delta)}>
           {delta(latest?.delta)}
         </Text>
-        <Button
-          size="compact-xs"
-          variant="default"
-          loading={exporter.isPending}
-          onClick={() => exporter.mutate(t.cases.map((c) => c.name))}
-        >
-          Export history
-        </Button>
-        {exporter.data && (
-          <Text size="xs" c="dimmed">
-            {exporter.data.exports.reduce((n, e) => n + e.written, 0)} new,{' '}
-            {exporter.data.exports.reduce((n, e) => n + e.skipped, 0)} unchanged
-            in {exporter.data.exports.length} case folders
-          </Text>
-        )}
-        {exporter.error && (
-          <Text size="xs" c="red">
-            {exporter.error.message}
-          </Text>
-        )}
+        <ExportCasesButton
+          spaceId={spaceId}
+          cases={t.cases.map((c) => c.name)}
+        />
         {kind && (
           <Text size="xs" c="dimmed">
             context {bytes(t.contextBytes)}
@@ -129,11 +104,9 @@ function Target({
           <MetricGrid runs={t.runs} />
           <CasesTable
             spaceId={spaceId}
-            cases={t.cases.map((c) =>
-              entryFromRuns(c.name, c.runs.slice(0, limit)),
-            )}
+            cases={t.cases}
             openKey={key}
-            showHeader={false}
+            showHeader
             onOpen={onOpen}
           />
         </>

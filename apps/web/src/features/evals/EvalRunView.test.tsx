@@ -68,7 +68,7 @@ describe('EvalRunView', () => {
         </MantineProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getByText('+0.50')).toBeTruthy();
+    expect(screen.getAllByText('+0.50')).toHaveLength(2); // case row delta and the baseline compare table
     fireEvent.click(screen.getByText(/▸ delta/));
     expect(screen.getByText('Arm: with')).toBeTruthy();
     expect(screen.getByText('Arm: without')).toBeTruthy();

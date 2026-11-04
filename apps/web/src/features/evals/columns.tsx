@@ -1,7 +1,10 @@
 import type { ComponentProps, MouseEvent, ReactNode } from 'react';
-import { Anchor, Badge, Group, Text, Tooltip } from '@mantine/core';
+import { Anchor, Badge, Button, Group, Text, Tooltip } from '@mantine/core';
 import {
   caseSide,
+  mean,
+  type CaseCompare,
+  type CaseSide,
   type EvalCaseEntry,
   type EvalCaseRun,
   type EvalGroup,
@@ -9,18 +12,10 @@ import {
 } from '@pm/protocol';
 import type { Column } from './DataTable';
 import type { RepCase } from './compare';
-import { METRICS, type Metrics } from './metrics';
-import {
-  cost,
-  delta,
-  duration,
-  num,
-  score,
-  scoreColor,
-  stamp,
-  tokens,
-} from './format';
+import { METRICS, type MetricRun, type Metrics } from './metrics';
+import { cost, delta, num, score, scoreColor, stamp, tokens } from './format';
 import { MetricChart } from './MetricChart';
+import { FlakyMark } from './SuiteVerdict';
 import styles from './evals.module.scss';
 
 /** Column registries per table kind; metric columns come from `METRICS` (same labels and formatters as the charts). */
@@ -58,11 +53,12 @@ export const Toggle = ({
   </Anchor>
 );
 
-/** Metric columns of rows holding `Metrics`; `get` picks them off the row. */
+/** Metric columns of rows holding `Metrics`; `get` picks them off the row; `threshold` colours the score (default 1). */
 function metricColumns<R>(
   get: (r: R) => Metrics,
   skip: string[] = [],
   off = false,
+  threshold?: (r: R) => number,
 ): Column<R>[] {
   return METRICS.filter((m) => !skip.includes(m.id)).map((m) => ({
     id: m.id,
@@ -70,7 +66,10 @@ function metricColumns<R>(
     title: m.label,
     render: (r: R) =>
       m.id === 'score'
-        ? colored(m.format(m.get(get(r))), scoreColor(m.get(get(r))))
+        ? colored(
+            m.format(m.get(get(r))),
+            scoreColor(m.get(get(r)), threshold?.(r)),
+          )
         : m.format(m.get(get(r))),
     sortValue: (r: R) => m.get(get(r)),
     has: (r: R) => m.get(get(r)) !== undefined,
@@ -215,7 +214,9 @@ export function suiteCaseColumns(ctx: {
             </Badge>
           )}
           {c.stalePin && (
-            <Tooltip label={`Pinned run ${c.stalePin} no longer exists; the auto baseline is used`}>
+            <Tooltip
+              label={`Pinned run ${c.stalePin} no longer exists; the auto baseline is used`}
+            >
               <Badge size="xs" color="yellow" variant="light">
                 stale pin
                 {ctx.unpin && (
@@ -273,6 +274,104 @@ export function suiteCaseColumns(ctx: {
     },
     ...m,
   ];
+}
+
+const metricFormat = (id: keyof Metrics) =>
+  METRICS.find((m) => m.id === id)?.format ?? num;
+const signed = (a?: number, b?: number, fmt: (n?: number) => string = num) =>
+  a === undefined || b === undefined
+    ? '-'
+    : `${b - a > 0 ? '+' : ''}${fmt(b - a)}`;
+
+/** Case rows of two compared sides (versions, experiment, eval baseline): `from` → `to` with the delta. */
+export function caseCompareColumns(ctx: {
+  /** adds the from/to trace buttons; the column is hidden when no side has a trace */
+  onTrace?: (side: CaseSide | undefined, name: string) => void;
+  /** more columns after Traces */
+  extra?: Column<CaseCompare>[];
+}): Column<CaseCompare>[] {
+  const { onTrace } = ctx;
+  const pair = (
+    id: string,
+    label: string,
+    get: (s: CaseSide) => number | undefined,
+    fmt: (n?: number) => string,
+  ): Column<CaseCompare> => ({
+    id,
+    label,
+    render: (c) =>
+      `${fmt(c.from && get(c.from))} → ${fmt(c.to && get(c.to))} (${signed(c.from && get(c.from), c.to && get(c.to), fmt)})`,
+    sortValue: (c) => (c.to && get(c.to)) ?? undefined,
+    has: (c) =>
+      !!(
+        (c.from && get(c.from) !== undefined) ||
+        (c.to && get(c.to) !== undefined)
+      ),
+  });
+  return [
+    {
+      id: 'case',
+      label: 'Case',
+      fixed: true,
+      render: (c) => (
+        <>
+          {c.name} {(c.from?.flaky || c.to?.flaky) && <FlakyMark />}
+        </>
+      ),
+      sortValue: (c) => c.name,
+    },
+    {
+      id: 'score',
+      label: 'Score',
+      render: (c) => `${score(c.from?.score)} → ${score(c.to?.score)}`,
+      sortValue: (c) => c.to?.score,
+    },
+    {
+      id: 'delta',
+      label: 'Δ',
+      render: (c) => colored(delta(c.delta), deltaColor(c.delta)),
+      sortValue: (c) => c.delta,
+    },
+    pair('costUsd', 'Cost', (s) => s.costUsd, metricFormat('costUsd')),
+    pair('turns', 'Turns', (s) => s.turns, metricFormat('turns')),
+    pair(
+      'maxContext',
+      'Max context',
+      (s) => s.maxContext,
+      metricFormat('maxContext'),
+    ),
+    pair('modelCalls', 'Model calls', (s) => s.modelCalls, num),
+    pair('toolCalls', 'Tool calls', (s) => s.toolCalls, num),
+    // only with `onTrace`: views without traces share the "compare" column prefs
+    ...(onTrace ? [tracesColumn(onTrace)] : []),
+    ...(ctx.extra ?? []),
+  ];
+}
+
+function tracesColumn(
+  onTrace: (side: CaseSide | undefined, name: string) => void,
+): Column<CaseCompare> {
+  return {
+    id: 'traces',
+    label: 'Traces',
+    has: (c) => !!(c.from?.runId || c.to?.runId),
+    render: (c) => (
+      <Group gap={4} wrap="nowrap">
+        {(['from', 'to'] as const).map((k) => (
+          <Button
+            key={k}
+            size="compact-xs"
+            variant="default"
+            disabled={!c[k]?.runId}
+            onClick={() => onTrace(c[k], c.name)}
+            aria-label={`${k} trace ${c.name}`}
+          >
+            {k}
+          </Button>
+        ))}
+      </Group>
+    ),
+  };
 }
 
 /** Cases within one run page. */
@@ -383,19 +482,13 @@ export function runCaseColumns(ctx: {
 }
 
 /** An invocation group or one of its runs, flattened to the fields the invocations table shows. */
-export type Invocation = {
-  id: string;
-  startedAt?: string;
+export type Invocation = MetricRun & {
   /** more than one run */
   many: boolean;
   runs: number;
   cases?: number;
   passed?: number;
-  score?: number;
-  passRate?: number;
   threshold: number;
-  cost?: number;
-  durationSeconds?: number;
   model?: string | null;
   claude?: string;
   plugin?: string;
@@ -405,11 +498,6 @@ export type Invocation = {
   /** a run listed under its group */
   nested?: boolean;
   sub?: Invocation[];
-};
-
-const mean = (xs: (number | undefined)[]) => {
-  const v = xs.filter((x): x is number => x !== undefined);
-  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : undefined;
 };
 
 function range(g: EvalGroup) {
@@ -422,8 +510,10 @@ function range(g: EvalGroup) {
     : `${from} – ${to}`;
 }
 
+const ms = (s?: number) => (s === undefined ? undefined : s * 1000);
+
 const summaryRow = (r: EvalRunSummary): Invocation => ({
-  id: r.id,
+  runId: r.id,
   startedAt: r.startedAt,
   many: false,
   runs: 1,
@@ -432,8 +522,8 @@ const summaryRow = (r: EvalRunSummary): Invocation => ({
   score: r.overallScore,
   passRate: r.overallPassRate,
   threshold: r.threshold ?? 1,
-  cost: r.costUsd,
-  durationSeconds: r.durationSeconds,
+  costUsd: r.costUsd,
+  durationMs: ms(r.durationSeconds),
   model: r.modelOverride,
   claude: r.claudeVersion,
   plugin: r.pluginVersion,
@@ -445,7 +535,7 @@ const summaryRow = (r: EvalRunSummary): Invocation => ({
 export function invocationRow(g: EvalGroup): Invocation {
   const many = g.runIds.length > 1;
   return {
-    id: g.id,
+    runId: g.id,
     startedAt: g.startedAt,
     many,
     runs: g.totalRuns,
@@ -457,8 +547,8 @@ export function invocationRow(g: EvalGroup): Invocation {
         ? g.runs[0]?.overallPassRate
         : mean(g.runs.map((r) => r.overallPassRate)),
     threshold: g.threshold ?? 1,
-    cost: g.costUsd,
-    durationSeconds: g.durationSeconds,
+    costUsd: g.costUsd,
+    durationMs: ms(g.durationSeconds),
     model: g.modelOverride,
     claude: g.claudeVersion,
     plugin: g.pluginVersion,
@@ -491,6 +581,13 @@ export function invocationColumns(ctx: {
   isOpen: (r: Invocation) => boolean;
   toggle: (r: Invocation) => void;
 }): Column<Invocation>[] {
+  const m = metricColumns<Invocation>(
+    (r) => r,
+    [],
+    false,
+    (r) => r.threshold,
+  );
+  const by = (id: string) => pick(m, id);
   return [
     {
       id: 'run',
@@ -547,37 +644,16 @@ export function invocationColumns(ctx: {
       render: (r) => r.runs,
       sortValue: (r) => r.runs,
     },
-    {
-      id: 'score',
-      label: 'Score',
-      render: (r) => colored(score(r.score), scoreColor(r.score, r.threshold)),
-      sortValue: (r) => r.score,
-    },
+    by('score'),
     {
       id: 'passed',
       label: 'Passed',
       render: (r) =>
         r.cases === undefined ? '-' : `${r.passed ?? 0}/${r.cases}`,
     },
-    {
-      id: 'passRate',
-      label: 'Pass rate',
-      has: (r) => r.passRate !== undefined,
-      render: (r) => score(r.passRate),
-      sortValue: (r) => r.passRate,
-    },
-    {
-      id: 'cost',
-      label: 'Cost',
-      render: (r) => cost(r.cost),
-      sortValue: (r) => r.cost,
-    },
-    {
-      id: 'time',
-      label: 'Time',
-      render: (r) => duration(r.durationSeconds),
-      sortValue: (r) => r.durationSeconds,
-    },
+    by('passRate'),
+    by('costUsd'),
+    by('durationMs'),
     {
       id: 'model',
       label: 'Model',

@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ActionIcon, Badge, Group, Table, Text, Tooltip } from '@mantine/core';
 import { useOnChatIdle } from '../chat/ChatContext';
 import { TraceDialog } from '../evals/TraceView';
-import { cost, stamp } from '../evals/format';
+import { cost, seconds, stamp } from '../evals/format';
 import { runsKey, useRunTrace, useRuns } from './hooks';
 
 function ago(iso: string) {
@@ -15,9 +15,26 @@ function ago(iso: string) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-export function RunTraceModal({ spaceId, runId, title, onClose }: { spaceId: string; runId: string; title: string; onClose: () => void }) {
+export function RunTraceModal({
+  spaceId,
+  runId,
+  title,
+  onClose,
+}: {
+  spaceId: string;
+  runId: string;
+  title: string;
+  onClose: () => void;
+}) {
   const { data, error } = useRunTrace(spaceId, runId);
-  return <TraceDialog title={`Run: ${title}`} trace={data} error={error} onClose={onClose} />;
+  return (
+    <TraceDialog
+      title={`Run: ${title}`}
+      trace={data}
+      error={error}
+      onClose={onClose}
+    />
+  );
 }
 
 export function RunsList({ spaceId }: { spaceId: string }) {
@@ -25,7 +42,12 @@ export function RunsList({ spaceId }: { spaceId: string }) {
   const [open, setOpen] = useState<{ id: string; title: string } | null>(null);
   if (error) return <Text c="red">{error.message}</Text>;
   if (!data) return null;
-  if (!data.runs.length) return <Text c="dimmed" p="md">No runs yet</Text>;
+  if (!data.runs.length)
+    return (
+      <Text c="dimmed" p="md">
+        No runs yet
+      </Text>
+    );
   return (
     <>
       <Table highlightOnHover>
@@ -33,10 +55,13 @@ export function RunsList({ spaceId }: { spaceId: string }) {
           <Table.Tr>
             <Table.Th>Run</Table.Th>
             <Table.Th>Started</Table.Th>
+            <Table.Th>Duration</Table.Th>
             <Table.Th>Turns</Table.Th>
             <Table.Th>Cost</Table.Th>
             <Table.Th>Models</Table.Th>
+            <Table.Th>Claude</Table.Th>
             <Table.Th>Commit</Table.Th>
+            <Table.Th>Resumed from</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -44,30 +69,57 @@ export function RunsList({ spaceId }: { spaceId: string }) {
             'error' in r ? (
               <Table.Tr key={r.id}>
                 <Table.Td>{r.id}</Table.Td>
-                <Table.Td colSpan={5}>
+                <Table.Td colSpan={8}>
                   <Tooltip label={r.error}>
                     <Badge color="red">error</Badge>
                   </Tooltip>
                 </Table.Td>
               </Table.Tr>
             ) : (
-              <Table.Tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setOpen({ id: r.id, title: r.title })}>
+              <Table.Tr
+                key={r.id}
+                style={{ cursor: 'pointer' }}
+                onClick={() => setOpen({ id: r.id, title: r.title })}
+              >
                 <Table.Td>{r.title}</Table.Td>
                 <Table.Td>
                   <Tooltip label={stamp(r.startedAt)}>
                     <Text size="sm">{ago(r.startedAt)}</Text>
                   </Tooltip>
                 </Table.Td>
+                <Table.Td>
+                  <Tooltip label={`ended ${stamp(r.endedAt)}`}>
+                    <Text size="sm">
+                      {seconds(
+                        Date.parse(r.endedAt) - Date.parse(r.startedAt) ||
+                          undefined,
+                      )}
+                    </Text>
+                  </Tooltip>
+                </Table.Td>
                 <Table.Td>{r.turns}</Table.Td>
                 <Table.Td>{cost(r.costUsd)}</Table.Td>
                 <Table.Td>{r.models.join(', ')}</Table.Td>
+                <Table.Td>{r.claudeVersion}</Table.Td>
                 <Table.Td>{r.commit?.slice(0, 7)}</Table.Td>
+                <Table.Td>
+                  <Tooltip label={r.resumedFrom} disabled={!r.resumedFrom}>
+                    <Text size="sm">{r.resumedFrom?.slice(0, 8)}</Text>
+                  </Tooltip>
+                </Table.Td>
               </Table.Tr>
             ),
           )}
         </Table.Tbody>
       </Table>
-      {open && <RunTraceModal spaceId={spaceId} runId={open.id} title={open.title} onClose={() => setOpen(null)} />}
+      {open && (
+        <RunTraceModal
+          spaceId={spaceId}
+          runId={open.id}
+          title={open.title}
+          onClose={() => setOpen(null)}
+        />
+      )}
     </>
   );
 }
@@ -80,7 +132,12 @@ export function RunsWidget({ spaceId }: { spaceId: string }) {
   return (
     <>
       <Group justify="flex-end" px="xs">
-        <ActionIcon variant="subtle" size="sm" aria-label="Refresh runs" onClick={refresh}>
+        <ActionIcon
+          variant="subtle"
+          size="sm"
+          aria-label="Refresh runs"
+          onClick={refresh}
+        >
           ↻
         </ActionIcon>
       </Group>

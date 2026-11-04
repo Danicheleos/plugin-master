@@ -1,7 +1,12 @@
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { EvalRunResultSchema, EvalSuitesResponseSchema, TraceSchema, type EvalCase } from '@pm/protocol';
+import {
+  EvalRunResultSchema,
+  EvalSuitesResponseSchema,
+  TraceSchema,
+  type EvalCase,
+} from '@pm/protocol';
 import { describe, expect, it } from 'vitest';
 import { EvalCompare } from './EvalCompare';
 import { TraceModal } from './TraceView';
@@ -48,18 +53,42 @@ describe('EvalCompare', () => {
       name: 'delta',
       graders: [],
       aggregates: {},
-      arms: { with: [run(1, true, 0.1, metrics)], without: [run(0.5, false, 0.2)] },
+      arms: {
+        with: [run(1, true, 0.1, metrics)],
+        without: [run(0.5, false, 0.2)],
+      },
     } as EvalCase;
     render(wrap(qc, <EvalCompare spaceId="s" runId="r" cases={[c]} />));
-    expect(screen.getByText('1.00 vs 0.50 (+0.50)')).toBeTruthy();
-    expect(screen.getByText('g1')).toHaveProperty('className', expect.stringMatching(/changed/));
-    expect(screen.getByText('20k vs - (-)')).toBeTruthy();
+    for (const h of [
+      'Case',
+      'Score',
+      'Δ',
+      'Cost',
+      'Turns',
+      'Max context',
+      'Model calls',
+      'Tool calls',
+      'Changed graders',
+    ])
+      expect(screen.getByText(h)).toBeTruthy();
+    expect(screen.getByText('0.50 → 1.00')).toBeTruthy();
+    expect(screen.getByText('+0.50')).toBeTruthy();
+    expect(screen.getByText('g1')).toHaveProperty(
+      'className',
+      expect.stringMatching(/changed/),
+    );
+    expect(screen.getByText('- → 20k (-)')).toBeTruthy();
   });
 
   it('offers only runs of the focused case, from every suite', () => {
     const qc = new QueryClient();
     qc.setQueryData(evalRunsKey('s'), { dir: 'evals', groups: [] });
-    const row = (runId: string, startedAt: string) => ({ runId, startedAt, model: 'm', score: 0.5 });
+    const row = (runId: string, startedAt: string) => ({
+      runId,
+      startedAt,
+      model: 'm',
+      score: 0.5,
+    });
     const entry = (name: string, runs: ReturnType<typeof row>[]) => ({
       name,
       runCount: runs.length,
@@ -78,15 +107,28 @@ describe('EvalCompare', () => {
             kind: 'main',
             runCount: 3,
             cases: [
-              entry('mine', [row('cur', '2026-10-12T10:00:00Z'), row('old', '2026-10-11T10:00:00Z')]),
+              entry('mine', [
+                row('cur', '2026-10-12T10:00:00Z'),
+                row('old', '2026-10-11T10:00:00Z'),
+              ]),
               entry('other', [row('elsewhere', '2026-10-10T10:00:00Z')]),
             ],
           },
         ],
       }),
     );
-    const c = { name: 'mine', graders: [], aggregates: {}, arms: { with: [run(1, true, 0.1)], without: [] } } as EvalCase;
-    render(wrap(qc, <EvalCompare spaceId="s" runId="cur" cases={[c]} focusCase="mine" />));
+    const c = {
+      name: 'mine',
+      graders: [],
+      aggregates: {},
+      arms: { with: [run(1, true, 0.1)], without: [] },
+    } as EvalCase;
+    render(
+      wrap(
+        qc,
+        <EvalCompare spaceId="s" runId="cur" cases={[c]} focusCase="mine" />,
+      ),
+    );
     fireEvent.click(screen.getAllByLabelText('Compare with')[0] as HTMLElement);
     expect(screen.getByText(/plugin suite/)).toBeTruthy(); // the older run of "mine"
     expect(screen.getAllByText(/plugin suite/)).toHaveLength(1); // not the current run, not "other"
@@ -121,10 +163,17 @@ describe('TraceModal', () => {
         ],
       }),
     );
-    render(wrap(qc, <TraceModal spaceId="s" target={target} onClose={() => undefined} />));
+    render(
+      wrap(
+        qc,
+        <TraceModal spaceId="s" target={target} onClose={() => undefined} />,
+      ),
+    );
     expect(screen.getByText(/4 model calls/)).toBeTruthy();
     expect(screen.getByText('Looking around.')).toBeTruthy();
-    expect(screen.getByRole('img', { name: /Context per model call/ })).toBeTruthy();
+    expect(
+      screen.getByRole('img', { name: /Context per model call/ }),
+    ).toBeTruthy();
     expect(screen.getByText(/context 500/)).toBeTruthy(); // nested subagent turn
     fireEvent.click(screen.getByText(/Task/));
     expect(screen.getByText('report')).toBeTruthy();

@@ -6,7 +6,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { EvalSuitesList } from './EvalSuitesList';
 import { evalsKey } from './hooks';
 
-const row = (runId: string, startedAt: string, score: number, baselineScore?: number) => ({
+const row = (
+  runId: string,
+  startedAt: string,
+  score: number,
+  baselineScore?: number,
+) => ({
   runId,
   startedAt,
   model: 'm',
@@ -36,16 +41,34 @@ const data = EvalSuitesResponseSchema.parse({
           sections: [
             {
               kind: 'run',
-              baseline: { runId: 'bare.json', startedAt: '2026-10-15T06:55:00.000Z', score: 0.5, model: 'm', after: false },
+              baseline: {
+                runId: 'bare.json',
+                startedAt: '2026-10-15T06:55:00.000Z',
+                score: 0.5,
+                model: 'm',
+                after: false,
+              },
               runs: [row('r4', '2026-10-16T10:00:00.000Z', 0.75, 0.5)],
             },
             {
               kind: 'run',
-              baseline: { runId: 'bare.json', startedAt: '2026-10-15T06:55:00.000Z', score: 0.5, model: 'm', after: true },
+              baseline: {
+                runId: 'bare.json',
+                startedAt: '2026-10-15T06:55:00.000Z',
+                score: 0.5,
+                model: 'm',
+                after: true,
+              },
               runs: [row('r2', '2026-10-12T10:00:00.000Z', 0.5, 0.5)],
             },
-            { kind: 'ablation', runs: [row('r3', '2026-10-13T10:00:00.000Z', 1, 0.25)] },
-            { kind: 'none', runs: [row('r1', '2026-10-11T10:00:00.000Z', 0.25)] },
+            {
+              kind: 'ablation',
+              runs: [row('r3', '2026-10-13T10:00:00.000Z', 1, 0.25)],
+            },
+            {
+              kind: 'none',
+              runs: [row('r1', '2026-10-11T10:00:00.000Z', 0.25)],
+            },
           ],
         },
       ],
@@ -62,7 +85,12 @@ const data = EvalSuitesResponseSchema.parse({
           lastRunAt: '2026-10-15T06:55:00.000Z',
           latest: row('bare.json', '2026-10-15T06:55:00.000Z', 0.5),
           trend: [0.5],
-          sections: [{ kind: 'none', runs: [row('bare.json', '2026-10-15T06:55:00.000Z', 0.5)] }],
+          sections: [
+            {
+              kind: 'none',
+              runs: [row('bare.json', '2026-10-15T06:55:00.000Z', 0.5)],
+            },
+          ],
         },
       ],
     },
@@ -71,7 +99,9 @@ const data = EvalSuitesResponseSchema.parse({
 
 describe('EvalSuitesList', () => {
   it('shows suites, cases and runs per baseline; opens a run and a comparison', () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     qc.setQueryData([...evalsKey('s'), 'suites'], data);
     const onOpen = vi.fn();
     render(
@@ -84,6 +114,9 @@ describe('EvalSuitesList', () => {
     expect(screen.getByText('plug · evals/cases')).toBeTruthy();
     expect(screen.getByText('naked · evals/bare')).toBeTruthy();
     expect(screen.getByText('baseline')).toBeTruthy();
+    expect(
+      screen.getAllByRole('button', { name: 'Export history' }),
+    ).toHaveLength(2); // one per suite header
     expect(screen.getAllByText('+0.25').length).toBeGreaterThan(0); // latest delta in the case row
     expect(screen.getByLabelText('Last 3 scores of alpha')).toBeTruthy();
     expect(screen.queryByText('No baseline')).toBeNull();
@@ -105,10 +138,27 @@ describe('EvalSuitesList', () => {
   });
 
   it('shows a trend chart per metric with at least two values in an expanded case', () => {
-    const run = (runId: string, startedAt: string, extra = {}) => ({ runId, startedAt, model: 'm', ...extra });
+    const run = (runId: string, startedAt: string, extra = {}) => ({
+      runId,
+      startedAt,
+      model: 'm',
+      ...extra,
+    });
     const runs = [
-      run('r2', '2026-10-12T10:00:00.000Z', { score: 1, costUsd: 0.4, turns: 3, tokens: 9000, commit: 'abcdef1234567', baselineMetrics: { score: 0.25, costUsd: 0.8 } }),
-      run('r1', '2026-10-11T10:00:00.000Z', { score: 0.5, costUsd: 0.6, turns: 5, baselineMetrics: { score: 0.5 } }),
+      run('r2', '2026-10-12T10:00:00.000Z', {
+        score: 1,
+        costUsd: 0.4,
+        turns: 3,
+        tokens: 9000,
+        commit: 'abcdef1234567',
+        baselineMetrics: { score: 0.25, costUsd: 0.8 },
+      }),
+      run('r1', '2026-10-11T10:00:00.000Z', {
+        score: 0.5,
+        costUsd: 0.6,
+        turns: 5,
+        baselineMetrics: { score: 0.5 },
+      }),
     ];
     const one = EvalSuitesResponseSchema.parse({
       dir: 'evals',
@@ -118,11 +168,21 @@ describe('EvalSuitesList', () => {
           label: 'k',
           kind: 'main',
           runCount: 2,
-          cases: [{ name: 'beta', runCount: 2, latest: runs[0], trend: [0.5, 1], sections: [{ kind: 'none', runs }] }],
+          cases: [
+            {
+              name: 'beta',
+              runCount: 2,
+              latest: runs[0],
+              trend: [0.5, 1],
+              sections: [{ kind: 'none', runs }],
+            },
+          ],
         },
       ],
     });
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     qc.setQueryData([...evalsKey('s'), 'suites'], one);
     render(
       <QueryClientProvider client={qc}>
@@ -133,10 +193,16 @@ describe('EvalSuitesList', () => {
     );
     expect(screen.queryByLabelText('Score')).toBeNull(); // collapsed
     fireEvent.click(screen.getAllByText(/beta/)[0] as HTMLElement);
-    for (const l of ['Score', 'Cost', 'Turns']) expect(screen.getByLabelText(l)).toBeTruthy();
-    for (const l of ['Pass rate', 'Max context', 'Tokens', 'Duration']) expect(screen.queryByLabelText(l)).toBeNull();
-    expect(screen.getByText('2026-10-12 10:00 · 1.00 (baseline 0.25) · abcdef1')).toBeTruthy(); // tooltip with commit
-    expect(screen.getByText('2026-10-11 10:00 · 0.50 (baseline 0.50)')).toBeTruthy();
+    for (const l of ['Score', 'Cost', 'Turns'])
+      expect(screen.getByLabelText(l)).toBeTruthy();
+    for (const l of ['Pass rate', 'Max context', 'Tokens', 'Duration'])
+      expect(screen.queryByLabelText(l)).toBeNull();
+    expect(
+      screen.getByText('2026-10-12 10:00 · 1.00 (baseline 0.25) · abcdef1'),
+    ).toBeTruthy(); // tooltip with commit
+    expect(
+      screen.getByText('2026-10-11 10:00 · 0.50 (baseline 0.50)'),
+    ).toBeTruthy();
     // baseline series only where the data exists: score on both runs, cost on one, turns on none
     expect(screen.getAllByTestId(/^baseline-/)).toHaveLength(3);
     expect(screen.getAllByText(/dashed: baseline/)).toHaveLength(2);
