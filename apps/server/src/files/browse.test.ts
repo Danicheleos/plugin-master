@@ -28,13 +28,13 @@ beforeEach(async () => {
 afterEach(() => rm(root, { recursive: true, force: true }));
 
 describe('GET /api/fs/browse', () => {
-  it('defaults to the user home and lists sorted visible subdirectories', async () => {
+  it('defaults to the user home and lists sorted subdirectories, hidden ones included', async () => {
     const res = await browse();
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       path: root,
       parent: dirname(root),
-      entries: [{ name: 'a' }, { name: 'b' }],
+      entries: [{ name: '.hidden' }, { name: 'a' }, { name: 'b' }],
     });
   });
 

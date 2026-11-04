@@ -29,6 +29,7 @@ export function RunTraceModal({
   const { data, error } = useRunTrace(spaceId, runId);
   return (
     <TraceDialog
+      byPrompt
       title={`Run: ${title}`}
       trace={data}
       error={error}

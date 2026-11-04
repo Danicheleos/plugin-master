@@ -18,7 +18,7 @@ export function Comparison({ data }: { data: ExperimentComparison }) {
       )}
       {data.suite && <SuiteVerdict suite={data.suite} />}
       <DataTable
-        kind="compare"
+        kind="compare-experiments"
         columns={columns}
         rows={data.cases}
         rowKey={(c) => c.name}

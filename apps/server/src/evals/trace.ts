@@ -13,6 +13,9 @@ const EXCERPT_CHARS = 16_000;
 const SYSTEM_CHARS = 200_000;
 const MAX_PREAMBLE = 300;
 const SUBAGENT_TOOLS = new Set(['Task', 'Agent']);
+/** Top-level user text the CLI writes itself: interrupts, slash-command records, task notifications. */
+const NOT_A_PROMPT =
+  /^(\[Request interrupted|<command-|<local-command-|<task-notification)/;
 
 type Block = { type?: string; [k: string]: unknown };
 type Msg = {
@@ -109,6 +112,7 @@ export function parseTrace(text: string): Trace {
   let model: string | undefined;
   let result: Msg | undefined;
   let prompt: string | undefined;
+  const prompts: { text: string; turn: number }[] = [];
   let system: string | undefined;
   const items: { kind: string; text: string }[] = [];
   let started = false; // the first top-level model call ends the preamble
@@ -185,6 +189,15 @@ export function parseTrace(text: string): Trace {
           ? textOf(m.message?.content).trim()
           : '';
       if (said) prompt = cut(said, EXCERPT_CHARS);
+      const asked =
+        parent === null && !m.isMeta && !m.isCompactSummary && !m.isSynthetic
+          ? textOf(m.message?.content).trim()
+          : '';
+      if (asked && !NOT_A_PROMPT.test(asked)) {
+        const at = byParent.get(null)?.length ?? 0;
+        if (prompts.at(-1)?.turn === at) prompts.pop();
+        prompts.push({ text: cut(asked, EXCERPT_CHARS), turn: at });
+      }
       for (const b of blocksOf(m.message?.content)) {
         const tool =
           b.type === 'tool_result'
@@ -272,6 +285,7 @@ export function parseTrace(text: string): Trace {
     metrics,
     turns: top,
     ...(prompt && { prompt }),
+    ...(prompts.length > 0 && { prompts }),
     ...((system || items.length) && {
       preamble: { ...(system && { system }), items },
     }),

@@ -104,8 +104,8 @@ describe('TraceFlow', () => {
   });
 });
 
-describe('TraceFlow flat (Log) and subagents', () => {
-  it('lists every call without collapsing and shows the recorded subagent metadata', () => {
+describe('TraceFlow subagents', () => {
+  it('shows the recorded subagent metadata on the Agent/Task call', () => {
     const withSub: Trace = {
       ...trace,
       metrics: {
@@ -125,17 +125,83 @@ describe('TraceFlow flat (Log) and subagents', () => {
     };
     render(
       <MantineProvider>
-        <TraceFlow trace={withSub} flat />
+        <TraceFlow trace={withSub} />
       </MantineProvider>,
     );
-    expect(screen.queryByText('6 reads')).toBeNull();
-    expect(screen.getByText('/f1.md')).toBeTruthy();
     expect(screen.getByText('echo nested')).toBeTruthy();
     expect(screen.getByLabelText('subagent')).toHaveProperty(
       'textContent',
       'reader · Helper job · completed · 1.2k tokens · 3 tool uses · 5s',
     );
-    expect(screen.getByText('Make a skill')).toBeTruthy();
+  });
+});
+
+describe('TraceFlow byPrompt', () => {
+  const prompted: Trace = {
+    ...trace,
+    prompts: [
+      { text: 'Make a skill', turn: 0 },
+      { text: 'Now polish it', turn: 1 },
+    ],
+  };
+
+  it('groups turns by prompt, only the last group expanded and the others unmounted', () => {
+    render(
+      <MantineProvider>
+        <TraceFlow trace={prompted} byPrompt />
+      </MantineProvider>,
+    );
+    const heads = screen.getAllByRole('button', { name: /^[▸▾]$/ });
+    expect(heads).toHaveLength(2);
+    expect(
+      screen.getAllByRole('button', { name: '▸', expanded: false }),
+    ).toEqual([heads[0]]);
+    expect(
+      screen.getAllByRole('button', { name: '▾', expanded: true }),
+    ).toEqual([heads[1]]);
+    expect(screen.getByText('1 turns · 1 tool calls')).toBeTruthy();
+    expect(screen.getByText('1 turns · 9 tool calls')).toBeTruthy();
+    expect(screen.queryByText('skill fired: my-skill')).toBeNull();
+    expect(screen.getByText('6 reads')).toBeTruthy();
+    expect(screen.getByText('Turn 2')).toBeTruthy();
+    fireEvent.click(heads[0]);
+    expect(screen.getByText('skill fired: my-skill')).toBeTruthy();
+  });
+
+  it('expands the last group that has turns and drops the prompt from the preamble', () => {
+    render(
+      <MantineProvider>
+        <TraceFlow
+          trace={{
+            ...prompted,
+            prompts: [...prompted.prompts!, { text: 'No answer yet', turn: 2 }],
+            preamble: {
+              items: [
+                { kind: 'user', text: 'Make a skill' },
+                { kind: 'init', text: 'INIT' },
+              ],
+            },
+          }}
+          byPrompt
+        />
+      </MantineProvider>,
+    );
+    expect(
+      screen.getAllByRole('button', { name: '▾', expanded: true }),
+    ).toHaveLength(1);
+    expect(screen.getByText('Turn 2')).toBeTruthy();
+    expect(screen.getByText('0 turns · 0 tool calls')).toBeTruthy();
+    expect(screen.getByText(/1 entries/)).toBeTruthy();
+  });
+
+  it('keeps the plain flow without byPrompt (evals traces)', () => {
+    render(
+      <MantineProvider>
+        <TraceFlow trace={prompted} />
+      </MantineProvider>,
+    );
+    expect(screen.getByText('skill fired: my-skill')).toBeTruthy();
+    expect(screen.queryByText('Now polish it')).toBeNull();
   });
 });
 

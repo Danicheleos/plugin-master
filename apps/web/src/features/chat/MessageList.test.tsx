@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { ChatEvent } from '@pm/protocol';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { expect, it, vi } from 'vitest';
-import { MAX_ITEMS, MessageList } from './MessageList';
+import { CHUNK_CALLS, MAX_ITEMS, MessageList } from './MessageList';
 
 const request = vi.hoisted(() => vi.fn(() => new Promise(() => undefined)));
 vi.mock('../../api/http', async (orig) => ({
@@ -188,4 +188,114 @@ it('scrolls to the bottom on init and conversation change, not on append', () =>
   rerender(ui([{ kind: 'text', text: 'other' }]));
   expect(el.scrollTop).toBe(900);
   delete (proto() as Record<string, unknown>).scrollHeight;
+});
+
+it('nests a subagent tool calls under its Agent call, collapsed until opened; old events without a parent stay flat', () => {
+  renderList([
+    {
+      kind: 'tool_use',
+      id: 'a1',
+      name: 'Agent',
+      input: { description: 'Look around' },
+    },
+    {
+      kind: 'tool_use',
+      id: 's1',
+      name: 'Grep',
+      input: { pattern: 'needle' },
+      parentToolUseId: 'a1',
+    },
+    {
+      kind: 'tool_result',
+      toolUseId: 's1',
+      isError: false,
+      preview: 'found it',
+      parentToolUseId: 'a1',
+    },
+    { kind: 'tool_result', toolUseId: 'a1', isError: false, preview: 'done' },
+    { kind: 'text', text: 'between' },
+    { kind: 'tool_use', id: 'r1', name: 'Read', input: { file_path: '/x.md' } },
+  ]);
+  const groups = screen.getAllByRole('button', { name: /tool call/ });
+  expect(groups).toHaveLength(2);
+  expect(groups[0]).toHaveProperty('textContent', '▸ 1 tool call: Agent');
+  expect(groups[1]).toHaveProperty('textContent', '▸ 1 tool call: Read');
+  fireEvent.click(groups[0]);
+  const sub = screen.getByRole('button', {
+    name: /Subagent: 1 tool call: Grep/,
+    expanded: false,
+  });
+  expect(screen.queryByText(/needle/)).toBeNull();
+  fireEvent.click(sub);
+  expect(screen.getAllByText(/needle/).length).toBeGreaterThan(0);
+  expect(screen.getByText('found it')).toBeTruthy();
+});
+
+it('stops at a parent cycle in subagent events', () => {
+  renderList([
+    { kind: 'tool_use', id: 'a1', name: 'Agent', input: {} },
+    {
+      kind: 'tool_use',
+      id: 'a2',
+      name: 'Agent',
+      input: {},
+      parentToolUseId: 'a1',
+    },
+    {
+      kind: 'tool_use',
+      id: 'a1',
+      name: 'Agent',
+      input: {},
+      parentToolUseId: 'a2',
+    },
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: /1 tool call: Agent/ }));
+  fireEvent.click(
+    screen.getByRole('button', { name: /Subagent: 1 tool call: Agent/ }),
+  );
+  fireEvent.click(
+    screen.getAllByRole('button', {
+      name: /Subagent: 1 tool call: Agent/,
+      expanded: false,
+    })[0],
+  );
+  // the call that closes the cycle gets no subagent block of its own
+  expect(
+    screen.getAllByRole('button', { name: /^[▸▾] Subagent/ }),
+  ).toHaveLength(2);
+});
+
+it('splits a long subagent block into chunks of CHUNK_CALLS calls, only the last expanded and the others unmounted', () => {
+  const n = CHUNK_CALLS * 2 + 20;
+  renderList([
+    { kind: 'tool_use', id: 'a1', name: 'Agent', input: {} },
+    ...Array.from({ length: n }, (_, i): ChatEvent => ({
+      kind: 'tool_use',
+      id: `s${i}`,
+      name: i % 2 ? 'Bash' : 'Read',
+      input: { file_path: `/f${i}.md`, command: `cmd ${i}` },
+      parentToolUseId: 'a1',
+    })),
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: /1 tool call: Agent/ }));
+  fireEvent.click(screen.getByRole('button', { name: /^▸ Subagent/ }));
+  const chunks = screen.getAllByRole('button', { name: /^[▸▾] calls / });
+  expect(chunks).toHaveLength(3);
+  expect(chunks[0]).toHaveProperty(
+    'textContent',
+    '▸ calls 1–50 · Read×25, Bash×25',
+  );
+  expect(chunks[1]).toHaveProperty(
+    'textContent',
+    '▸ calls 51–100 · Read×25, Bash×25',
+  );
+  expect(chunks[2]).toHaveProperty(
+    'textContent',
+    '▾ calls 101–120 · Read×10, Bash×10',
+  );
+  expect(screen.queryByText('/f0.md')).toBeNull();
+  expect(screen.getByText('/f100.md')).toBeTruthy();
+  fireEvent.click(chunks[0]);
+  expect(screen.getByText('/f0.md')).toBeTruthy();
+  expect(screen.queryByText('/f50.md')).toBeNull();
 });

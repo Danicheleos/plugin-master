@@ -2,6 +2,7 @@ import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { updatePrefs } from '../evals/prefs';
 import { VersionsWidget } from './VersionsWidget';
 
 vi.mock('../../api/ws', () => ({ useSpaceEvents: vi.fn(), send: vi.fn() }));
@@ -122,6 +123,17 @@ describe('VersionsWidget', () => {
     expect(screen.getByText('1.00 → 0.50')).toBeTruthy();
     expect(compareUrl()).toContain('from=bbb2222&to=ccc3333');
     expect(screen.getByTestId('point-aaa1111')).toBeTruthy();
+  });
+
+  it('keeps its own compare columns when another compare table saved a choice', async () => {
+    updatePrefs('default', () => ({
+      columns: { compare: ['score'], 'compare-experiments': ['score'] },
+    }));
+    renderWidget();
+    await screen.findByText('c1');
+    expect(screen.getByText('Traces')).toBeTruthy();
+    expect(screen.getByText('Cost')).toBeTruthy();
+    updatePrefs('default', () => ({ columns: {} }));
   });
 
   it('selecting two other commits shows their compare', async () => {

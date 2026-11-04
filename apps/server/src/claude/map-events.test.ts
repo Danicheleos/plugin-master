@@ -86,24 +86,58 @@ describe('mapSdkMessage', () => {
     );
   });
 
-  it('skips live subagent messages, as the history mapper does', () => {
+  it('keeps only the tool calls and results of live subagent messages, tagged with the parent call', () => {
     const sub = (content: unknown[], type = 'assistant') =>
       asMsg({
         type,
         message: { content },
         parent_tool_use_id: 'toolu_1',
       });
-    expect(
-      mapSdkMessage(sub([{ type: 'text', text: 'sub says hi' }])),
-    ).toEqual([]);
+    expect(mapSdkMessage(sub([{ type: 'text', text: 'sub says hi' }]))).toEqual(
+      [],
+    );
     expect(
       mapSdkMessage(
         sub([{ type: 'tool_use', id: 'x', name: 'Read', input: {} }]),
       ),
-    ).toEqual([]);
+    ).toEqual([
+      {
+        kind: 'tool_use',
+        id: 'x',
+        name: 'Read',
+        input: {},
+        parentToolUseId: 'toolu_1',
+      },
+    ]);
     expect(
       mapSdkMessage(
         sub([{ type: 'tool_result', tool_use_id: 'x', content: 'ok' }], 'user'),
+      ),
+    ).toEqual([
+      {
+        kind: 'tool_result',
+        toolUseId: 'x',
+        isError: false,
+        preview: 'ok',
+        parentToolUseId: 'toolu_1',
+      },
+    ]);
+    expect(
+      mapSdkMessage(
+        asMsg({
+          type: 'result',
+          is_error: false,
+          parent_tool_use_id: 'toolu_1',
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      mapSdkMessage(
+        asMsg({
+          type: 'assistant',
+          message: { content: [{ type: 'tool_use', id: 'y', name: 'Read' }] },
+          parent_agent_id: 'a1',
+        }),
       ),
     ).toEqual([]);
   });
@@ -126,7 +160,7 @@ describe('mapSdkMessage', () => {
     ]);
   });
 
-  it('maps stored session messages and skips subagent internals', () => {
+  it('maps stored session messages and keeps only the tool events of subagent messages', () => {
     const m = (type: string, message: unknown, parent: string | null = null) =>
       ({
         type,
@@ -144,11 +178,23 @@ describe('mapSdkMessage', () => {
           content: [{ type: 'tool_result', tool_use_id: 't', content: 'ok' }],
         }),
         m('assistant', { content: [{ type: 'text', text: 'sub' }] }, 'toolu_1'),
+        m(
+          'assistant',
+          { content: [{ type: 'tool_use', id: 's', name: 'Grep', input: {} }] },
+          'toolu_1',
+        ),
       ].flatMap(mapSessionMessage),
     ).toEqual([
       { kind: 'user', text: 'hi' },
       { kind: 'text', text: 'yo' },
       { kind: 'tool_result', toolUseId: 't', isError: false, preview: 'ok' },
+      {
+        kind: 'tool_use',
+        id: 's',
+        name: 'Grep',
+        input: {},
+        parentToolUseId: 'toolu_1',
+      },
     ]);
   });
 });
@@ -208,7 +254,15 @@ describe('mapTaskMessage', () => {
 
   it('keeps the task_type of a started task, so shell tasks can be told from agents', () => {
     expect(
-      mapTaskMessage(asMsg({ type: 'system', subtype: 'task_started', task_id: 'b1', description: 'npm run dev', task_type: 'local_bash' })),
+      mapTaskMessage(
+        asMsg({
+          type: 'system',
+          subtype: 'task_started',
+          task_id: 'b1',
+          description: 'npm run dev',
+          task_type: 'local_bash',
+        }),
+      ),
     ).toMatchObject({ id: 'b1', taskType: 'local_bash' });
   });
 

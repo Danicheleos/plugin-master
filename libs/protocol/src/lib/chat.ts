@@ -2,12 +2,20 @@
 export type ChatEvent =
   | { kind: 'user'; text: string }
   | { kind: 'text'; text: string }
-  | { kind: 'tool_use'; id: string; name: string; input: unknown }
+  // `parentToolUseId`: made inside the subagent of that Agent/Task call (absent = the master's)
+  | {
+      kind: 'tool_use';
+      id: string;
+      name: string;
+      input: unknown;
+      parentToolUseId?: string;
+    }
   | {
       kind: 'tool_result';
       toolUseId: string;
       isError: boolean;
       preview: string;
+      parentToolUseId?: string;
     }
   | { kind: 'result'; isError: boolean; costUsd?: number; durationMs?: number }
   | { kind: 'commit'; hash: string; files: number; message: string }

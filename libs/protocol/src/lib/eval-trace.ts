@@ -86,6 +86,15 @@ export const TraceSchema = z.object({
   turns: z.array(TraceTurnSchema),
   /** First user message (the run's prompt), cut to 16 KB. */
   prompt: z.string().optional(),
+  /**
+   * Every top-level user prompt (not meta, synthetic, compaction summary, tool result, interrupt
+   * notice, `<command-…>`/`<local-command-…>`/`<task-notification>` record), each cut to 16 KB,
+   * with `turn` = index in `turns` of the first model call after it; prompts with no call between
+   * them keep the later one. Absent when the trace has none.
+   */
+  prompts: z
+    .array(z.object({ text: z.string(), turn: z.number().int() }))
+    .optional(),
   /** What the trace records before the first model call (not every trace has all of it). */
   preamble: z
     .object({

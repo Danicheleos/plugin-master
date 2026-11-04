@@ -1,7 +1,7 @@
-import { Badge, Modal, SegmentedControl, Text } from '@mantine/core';
-import { useState } from 'react';
+import { Badge, Modal, Text } from '@mantine/core';
 import type { Trace, TraceMetrics } from '@pm/protocol';
 import { useEvalTrace, type TraceTarget } from './hooks';
+import { maxPerBucket } from './downsample';
 import { MetricChart } from './MetricChart';
 import { TraceFlow } from './TraceFlow';
 import { cost, seconds, tokens } from './format';
@@ -37,9 +37,31 @@ export function MetricsLine({ m }: { m: TraceMetrics }) {
   );
 }
 
-/** The one trace body of every view: metrics, token line, context chart and the Flow | Log switch. */
-export function TraceBody({ trace }: { trace: Trace }) {
-  const [view, setView] = useState('flow');
+/** Context per model call, at most `CHART_POINTS` points (the peak of each bucket of calls). */
+const CHART_POINTS = 150;
+const contextPoints = (trace: Trace) =>
+  maxPerBucket(trace.turns, (t) => t.context, CHART_POINTS).map(
+    ({ item, from, to }) => ({
+      key: String(from),
+      value: item.context,
+      title:
+        from === to
+          ? `call ${from + 1}: ${tokens(item.context)}`
+          : `calls ${from + 1}–${to + 1}: max ${tokens(item.context)}`,
+    }),
+  );
+
+/**
+ * The one trace body of every view: metrics, token line, context chart and the flow;
+ * `byPrompt` groups the flow by user prompt (session/run traces).
+ */
+export function TraceBody({
+  trace,
+  byPrompt,
+}: {
+  trace: Trace;
+  byPrompt?: boolean;
+}) {
   const m = trace.metrics;
   return (
     <>
@@ -51,25 +73,11 @@ export function TraceBody({ trace }: { trace: Trace }) {
         {m.badLines > 0 && ` · ${m.badLines} unreadable lines`}
       </Text>
       <MetricChart
-        points={trace.turns.map((t, i) => ({
-          key: String(i),
-          value: t.context,
-          title: `call ${i + 1}: ${tokens(t.context)}`,
-        }))}
+        points={contextPoints(trace)}
         label="Context per model call"
         format={tokens}
       />
-      <SegmentedControl
-        size="xs"
-        mt="xs"
-        value={view}
-        onChange={setView}
-        data={[
-          { value: 'flow', label: 'Flow' },
-          { value: 'log', label: 'Log' },
-        ]}
-      />
-      <TraceFlow trace={trace} flat={view === 'log'} />
+      <TraceFlow trace={trace} byPrompt={byPrompt} />
     </>
   );
 }
@@ -80,16 +88,19 @@ export function TraceDialog({
   trace,
   error,
   onClose,
+  byPrompt,
 }: {
   title: string;
   trace?: Trace;
   error?: Error | null;
   onClose: () => void;
+  /** session/run traces: the flow grouped by user prompt */
+  byPrompt?: boolean;
 }) {
   return (
     <Modal opened onClose={onClose} size="90%" title={title}>
       {error && <Text c="red">{error.message}</Text>}
-      {trace && <TraceBody trace={trace} />}
+      {trace && <TraceBody trace={trace} byPrompt={byPrompt} />}
     </Modal>
   );
 }

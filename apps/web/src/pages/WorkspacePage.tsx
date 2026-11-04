@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Anchor, Group, Text } from '@mantine/core';
+import { ActionIcon, Group, Text, Tooltip } from '@mantine/core';
 import { Link, useParams } from 'react-router';
 import { ChatProvider, useChatContext } from '../features/chat/ChatContext';
 import { ChatPanel } from '../features/chat/ChatPanel';
@@ -31,6 +31,23 @@ import { ColorSchemeToggle } from '../features/theme/ColorSchemeToggle';
 import { useWorkspaceWatch } from './useWorkspaceWatch';
 import styles from './workspace.module.scss';
 
+/** House outline (no icon library in the app). */
+const HouseIcon = () => (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M3 11l9-8 9 8" />
+    <path d="M5 10v10h5v-6h4v6h5V10" />
+  </svg>
+);
 export function WorkspacePage() {
   const { id = '' } = useParams();
   return <Workspace key={id} id={id} />; // per-space state (expanded dirs, active editor, dialogs) resets on switch
@@ -183,9 +200,17 @@ function Workspace({ id }: { id: string }) {
   return (
     <div className={styles.page}>
       <Group component="header" className={styles.header}>
-        <Anchor component={Link} to="/">
-          ← Back to list
-        </Anchor>
+        <Tooltip label="Back to list">
+          <ActionIcon
+            component={Link}
+            to="/"
+            variant="subtle"
+            color="gray"
+            aria-label="Back to list"
+          >
+            <HouseIcon />
+          </ActionIcon>
+        </Tooltip>
         <Text fw={600} flex={1}>
           {space?.name ?? id}
         </Text>

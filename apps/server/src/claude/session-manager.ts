@@ -58,7 +58,9 @@ const ROSTER_IDLE_MS = 30 * 60_000;
 function rosterTasks(st: Pick<State, 'tasks' | 'taskAt'>): AgentTask[] {
   const now = Date.now();
   return [...st.tasks.values()].filter(
-    (t) => t.status === 'running' || now - (st.taskAt.get(t.id) ?? 0) <= ROSTER_IDLE_MS,
+    (t) =>
+      t.status === 'running' ||
+      now - (st.taskAt.get(t.id) ?? 0) <= ROSTER_IDLE_MS,
   );
 }
 
@@ -260,8 +262,16 @@ export function createSessionManager(
     let append: string;
     let missing: string[];
     try {
-      ({ masterContext, disabledPlugins, autoMemory, features: { userSettings } } = await spaces.getConfig(spaceId));
-      ({ text: append, missing } = await buildContext(root, masterContext.filter((f) => f !== MASTER_PROMPT_FILE)));
+      ({
+        masterContext,
+        disabledPlugins,
+        autoMemory,
+        features: { userSettings },
+      } = await spaces.getConfig(spaceId));
+      ({ text: append, missing } = await buildContext(
+        root,
+        masterContext.filter((f) => f !== MASTER_PROMPT_FILE),
+      ));
       append = [await loadMasterPrompt(root), append].join('\n\n');
     } catch (e) {
       throw new AppError(
@@ -283,19 +293,26 @@ export function createSessionManager(
       userSettings,
       disabledPlugins,
       autoMemory,
-      pinnedFiles: [MASTER_PROMPT_FILE, ...masterContext.filter((f) => f !== MASTER_PROMPT_FILE)],
+      pinnedFiles: [
+        MASTER_PROMPT_FILE,
+        ...masterContext.filter((f) => f !== MASTER_PROMPT_FILE),
+      ],
       tasks: () => rosterTasks(state),
       plan: async () => {
         const cur = await plansService.current();
-        return cur && { title: cur.plan.title, phase: cur.plan.phases.find((p) => p.status === 'in_progress')?.title };
+        return (
+          cur && {
+            title: cur.plan.title,
+            phase: cur.plan.phases.find((p) => p.status === 'in_progress')
+              ?.title,
+          }
+        );
       },
       agents: await loadAgentPresets(root),
       resume: state.sessionId ?? undefined,
       canUseTool: permissions.canUseTool(spaceId),
       mcpServers: {
-        [PLAN_SERVER]: createPlanMcpServer(
-          plansService,
-        ),
+        [PLAN_SERVER]: createPlanMcpServer(plansService),
         ...(evals && {
           [EVAL_SERVER]: createEvalMcpServer(
             spaceId,
@@ -446,19 +463,12 @@ export function createSessionManager(
   );
 
   hub.onSubscribe((spaceId, client) => {
-    const {
-      events,
-      status,
-      mode,
-      model,
-      contextFiles,
-      missingContext,
-      sessionId,
-    } = stateOf(spaceId);
+    const s = stateOf(spaceId);
+    const { status, mode, model, contextFiles, missingContext, sessionId } = s;
     client.send({
       type: 'chat.history',
       spaceId,
-      events: [...events],
+      events: [...s.events],
       status,
       mode,
       model,

@@ -4,7 +4,7 @@ import type { BrowseResult } from '@pm/protocol';
 import type { FastifyPluginAsync } from 'fastify';
 import { AppError } from '../lib/errors';
 
-/** Lists subdirectories of an absolute path (default `defaultDir`) for the folder picker. */
+/** Lists subdirectories (dot ones too) of an absolute path (default `defaultDir`) for the folder picker. */
 export const browseRoutes =
   (defaultDir: string): FastifyPluginAsync =>
   async (app) => {
@@ -25,19 +25,18 @@ export const browseRoutes =
             throw new AppError('NOT_FOUND', 'Cannot read directory', 404);
           },
         );
+        // hidden (dot) directories included: a plugin may live in one
         const entries = await Promise.all(
-          dirents
-            .filter((d) => !d.name.startsWith('.'))
-            .map(async (d) =>
-              d.isDirectory() ||
-              (d.isSymbolicLink() &&
-                (await stat(resolve(path, d.name)).then(
-                  (s) => s.isDirectory(),
-                  () => false,
-                )))
-                ? { name: d.name }
-                : null,
-            ),
+          dirents.map(async (d) =>
+            d.isDirectory() ||
+            (d.isSymbolicLink() &&
+              (await stat(resolve(path, d.name)).then(
+                (s) => s.isDirectory(),
+                () => false,
+              )))
+              ? { name: d.name }
+              : null,
+          ),
         );
         const parent = dirname(path);
         return {

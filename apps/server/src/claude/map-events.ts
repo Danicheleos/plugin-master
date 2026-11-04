@@ -26,10 +26,28 @@ function isSubagentMessage(m: {
   return Boolean(m.parent_tool_use_id || m.parent_agent_id);
 }
 
-/** Chat events of the master only; subagent messages map to nothing. */
+/**
+ * Of a subagent message only its tool calls and results, tagged with the parent Agent/Task call
+ * (`parent_tool_use_id`); its text and result, and messages without that id, map to nothing.
+ */
+function subagentTools(
+  m: { parent_tool_use_id?: string | null },
+  events: ChatEvent[],
+): ChatEvent[] {
+  const parentToolUseId = m.parent_tool_use_id;
+  if (!parentToolUseId) return [];
+  return events.flatMap((e) =>
+    e.kind === 'tool_use' || e.kind === 'tool_result'
+      ? [{ ...e, parentToolUseId }]
+      : [],
+  );
+}
+
+/** Chat events of the master, plus the tool calls/results of its subagents (`parentToolUseId`). */
 export function mapSdkMessage(m: SDKMessage): ChatEvent[] {
-  return isSubagentMessage(m as Parameters<typeof isSubagentMessage>[0])
-    ? []
+  const sub = m as Parameters<typeof isSubagentMessage>[0];
+  return isSubagentMessage(sub)
+    ? subagentTools(sub, mapSdkBlocks(m))
     : mapSdkBlocks(m);
 }
 
@@ -77,9 +95,15 @@ export function mapSdkBlocks(m: SDKMessage): ChatEvent[] {
   return [];
 }
 
-/** Maps a stored transcript message (API message shape) to events; subagent internals are skipped. */
+/** Maps a stored transcript message (API message shape) to events; of subagent messages only the tool calls/results, as live. */
 export function mapSessionMessage(m: SessionMessage): ChatEvent[] {
-  if (isSubagentMessage(m)) return [];
+  if (isSubagentMessage(m))
+    return m.type === 'assistant' || m.type === 'user'
+      ? subagentTools(
+          m,
+          mapSdkBlocks({ type: m.type, message: m.message } as SDKMessage),
+        )
+      : [];
   if (m.type === 'assistant')
     return mapSdkBlocks({
       type: 'assistant',

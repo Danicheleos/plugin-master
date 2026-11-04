@@ -74,7 +74,7 @@ export function Compare({
         <Tabs.Panel value="cases" pt="xs">
           {data.cases.length ? (
             <DataTable
-              kind="compare"
+              kind="compare-versions"
               columns={columns}
               rows={data.cases}
               rowKey={(c) => c.name}

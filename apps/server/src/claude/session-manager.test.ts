@@ -570,7 +570,7 @@ describe('session manager', () => {
     );
   });
 
-  it('keeps subagent messages out of the chat while task stats and notifications still flow', async () => {
+  it('keeps subagent text out of the chat, passes its tool calls with the parent call, while task stats still flow', async () => {
     const { sessions, client } = await setup();
     const c = await client();
     c.send({ type: 'subscribe', spaceId: 's1' });
@@ -636,7 +636,58 @@ describe('session manager', () => {
     const chat = c.msgs.flatMap((m) =>
       m.type === 'chat.event' && m.event.kind !== 'user' ? [m.event] : [],
     );
-    expect(chat).toEqual([{ kind: 'text', text: 'master speaks' }]);
+    expect(chat).toEqual([
+      {
+        kind: 'tool_use',
+        id: 't9',
+        name: 'Grep',
+        input: { pattern: 'x' },
+        parentToolUseId: 'toolu_1',
+      },
+      { kind: 'text', text: 'master speaks' },
+    ]);
+  });
+
+  it('replays every subagent tool event in chat.history', async () => {
+    const { sessions, client } = await setup();
+    const c = await client();
+    c.send({ type: 'subscribe', spaceId: 's1' });
+    c.send({ type: 'chat.send', spaceId: 's1', text: 'hi' });
+    await vi.waitFor(() => expect(sessions[0]).toBeDefined());
+    for (let i = 0; i < 250; i++)
+      sessions[0].o.onMessage(
+        asMsg({
+          type: 'assistant',
+          message: {
+            content: [
+              { type: 'tool_use', id: `t${i}`, name: 'Read', input: {} },
+            ],
+          },
+          parent_tool_use_id: 'toolu_1',
+        }),
+      );
+    sessions[0].o.onMessage(
+      asMsg({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'after' }] },
+      }),
+    );
+    const late = await client();
+    late.send({ type: 'subscribe', spaceId: 's1' });
+    const history = await vi.waitFor(() => {
+      const h = late.msgs.find(
+        (m): m is Extract<ServerMessage, { type: 'chat.history' }> =>
+          m.type === 'chat.history',
+      );
+      expect(h).toBeDefined();
+      return h!;
+    });
+    const sub = history.events.filter(
+      (e) => e.kind === 'tool_use' && e.parentToolUseId === 'toolu_1',
+    );
+    expect(sub).toHaveLength(250);
+    expect(sub[0]).toMatchObject({ id: 't0' });
+    expect(history.events).toContainEqual({ kind: 'text', text: 'after' });
   });
 
   it('tracks the permission mode per space', async () => {

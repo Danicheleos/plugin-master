@@ -37,14 +37,8 @@ const LABEL: Record<ToolKind, string> = {
 };
 const COLLAPSE_OVER = 4;
 
-/** Per trace: flat (Log) layout and the recorded subagent metadata by Agent/Task tool use id. */
-const FlowContext = createContext<{
-  flat: boolean;
-  subagents: Map<string, TraceSubagent>;
-}>({
-  flat: false,
-  subagents: new Map(),
-});
+/** Per trace: the recorded subagent metadata by Agent/Task tool use id. */
+const FlowContext = createContext<Map<string, TraceSubagent>>(new Map());
 
 /** Text clamped to a few lines with a toggle that shows all of it (shown only when it can be longer than the clamp). */
 function Excerpt({
@@ -131,7 +125,7 @@ export function ToolCall({
   action?: ReactNode;
 }) {
   const [open, { toggle }] = useDisclosure(false);
-  const { flat, subagents } = useContext(FlowContext);
+  const subagents = useContext(FlowContext);
   const kind = toolKind(t.name);
   const err = t.result?.isError;
   const sub = kind === 'agent' ? subagents.get(t.id) : undefined;
@@ -176,7 +170,7 @@ export function ToolCall({
         </Collapse>
       </Block>
       {t.turns && (
-        <div className={flat ? styles.nested : styles.lane}>
+        <div className={styles.lane}>
           <Flow turns={t.turns} />
         </div>
       )}
@@ -210,10 +204,8 @@ function Run({ kind, tools }: { kind: ToolKind; tools: TraceToolUse[] }) {
   );
 }
 
-/** Consecutive same-kind tool calls; long runs (except subagents) become one block, except in flat mode. */
+/** Consecutive same-kind tool calls; long runs (except subagents) become one block. */
 function Tools({ tools }: { tools: TraceToolUse[] }) {
-  const { flat } = useContext(FlowContext);
-  if (flat) return tools.map((t) => <ToolCall key={t.id} t={t} />);
   const runs: { kind: ToolKind; tools: TraceToolUse[] }[] = [];
   for (const t of tools) {
     const kind = toolKind(t.name);
@@ -232,7 +224,7 @@ function Tools({ tools }: { tools: TraceToolUse[] }) {
   );
 }
 
-function Flow({ turns }: { turns: TraceTurn[] }) {
+function Flow({ turns, start = 0 }: { turns: TraceTurn[]; start?: number }) {
   return (
     <div className={styles.flow}>
       {turns.map((t, i) => (
@@ -240,7 +232,7 @@ function Flow({ turns }: { turns: TraceTurn[] }) {
           <Block>
             <Group gap="xs">
               <Text size="sm" fw={600}>
-                Turn {i + 1}
+                Turn {start + i + 1}
               </Text>
               <Text size="xs" c="dimmed">
                 context {tokens(t.context)} · out {tokens(t.outputTokens)}
@@ -355,24 +347,103 @@ function PreambleItem({ kind, text }: { kind: string; text: string }) {
   );
 }
 
+/** The top-level turns split at each user prompt; turns before the first prompt form their own group. */
+export function promptGroups(trace: Trace) {
+  const ps = trace.prompts ?? [];
+  const starts = ps.map((p) => p.turn);
+  const groups: { text?: string; start: number; turns: TraceTurn[] }[] = [];
+  if (!ps.length || ps[0].turn > 0)
+    groups.push({ start: 0, turns: trace.turns.slice(0, starts[0]) });
+  ps.forEach((p, k) =>
+    groups.push({
+      text: p.text,
+      start: p.turn,
+      turns: trace.turns.slice(p.turn, starts[k + 1]),
+    }),
+  );
+  return groups;
+}
+
+const countTools = (turns: TraceTurn[]): number =>
+  turns.reduce(
+    (n, t) =>
+      n +
+      t.tools.length +
+      t.tools.reduce((m, x) => m + (x.turns ? countTools(x.turns) : 0), 0),
+    0,
+  );
+
+/** One prompt and its turns; the turns mount only while expanded. */
+function PromptGroup({
+  text,
+  start,
+  turns,
+  initiallyOpen,
+}: {
+  text?: string;
+  start: number;
+  turns: TraceTurn[];
+  initiallyOpen: boolean;
+}) {
+  const [open, { toggle }] = useDisclosure(initiallyOpen);
+  return (
+    <div className={styles.step}>
+      <Block>
+        <Group gap="xs" wrap="nowrap">
+          <Anchor
+            component="button"
+            size="sm"
+            fw={600}
+            aria-expanded={open}
+            onClick={toggle}
+          >
+            {open ? '▾' : '▸'}
+          </Anchor>
+          <Text size="sm" truncate flex={1} title={text}>
+            {text ?? '(before the first prompt)'}
+          </Text>
+          <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+            {turns.length} turns · {countTools(turns)} tool calls
+          </Text>
+        </Group>
+        {open && text && <Excerpt text={text} lines={8} size="sm" />}
+      </Block>
+      {open && <Flow turns={turns} start={start} />}
+    </div>
+  );
+}
+
 /**
  * Vertical block scheme of a run: preamble, prompt, each model turn with its tool calls, result.
- * `flat` (the Log view): every call listed, no collapsed runs, subagent turns indented instead of lanes.
+ * `byPrompt` (session/run traces): the turns are grouped under each user prompt (`Trace.prompts`),
+ * every group collapsed and unmounted except the last one that has turns; the preamble then drops
+ * its top-level user entries (the first prompt is the first group's header).
  */
 export function TraceFlow({
   trace,
-  flat = false,
+  byPrompt = false,
 }: {
   trace: Trace;
-  flat?: boolean;
+  byPrompt?: boolean;
 }) {
   const m = trace.metrics;
   const subagents = new Map(m.subagents.map((s) => [s.toolUseId, s]));
+  const groups = byPrompt && trace.prompts?.length ? promptGroups(trace) : null;
+  const openGroup = groups
+    ? groups.reduce((at, g, k) => (g.turns.length ? k : at), -1)
+    : -1;
+  const preamble =
+    groups && trace.preamble
+      ? {
+          ...trace.preamble,
+          items: trace.preamble.items.filter((i) => i.kind !== 'user'),
+        }
+      : trace.preamble;
   return (
-    <FlowContext.Provider value={{ flat, subagents }}>
+    <FlowContext.Provider value={subagents}>
       <div className={styles.flow}>
-        {trace.preamble && <Preamble preamble={trace.preamble} />}
-        {trace.prompt && (
+        {preamble && <Preamble preamble={preamble} />}
+        {!groups && trace.prompt && (
           <div className={styles.step}>
             <Block>
               <Text size="xs" c="dimmed">
@@ -382,7 +453,19 @@ export function TraceFlow({
             </Block>
           </div>
         )}
-        <Flow turns={trace.turns} />
+        {groups ? (
+          groups.map((g, k) => (
+            <PromptGroup
+              key={g.start}
+              text={g.text}
+              start={g.start}
+              turns={g.turns}
+              initiallyOpen={k === openGroup}
+            />
+          ))
+        ) : (
+          <Flow turns={trace.turns} />
+        )}
         <div className={styles.step}>
           <Block color={m.isError ? 'red' : undefined}>
             <Text size="sm" fw={600}>
