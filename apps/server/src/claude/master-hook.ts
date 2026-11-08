@@ -95,6 +95,17 @@ const SUPERSEDE =
 const CHECKLIST = '.plugin-master/CHECKLIST.md';
 const CALL_PLAN = 'Call mcp__plan__plan_get before continuing the task.';
 
+const LOG = '.plugin-master/LOG.md';
+const LOG_HEADER = 'LOG tail (the last two entries of .plugin-master/LOG.md; do not re-read the file):';
+
+/** The last `n` entries: a `- ` line at column 0 plus its lines up to the next one; undefined when none. */
+const lastEntries = (text: string, n: number): string | undefined => {
+  const lines = text.split(/\r?\n/);
+  const starts = lines.flatMap((l, i) => (l.startsWith('- ') ? [i] : []));
+  if (!starts.length) return undefined;
+  return lines.slice(starts[Math.max(0, starts.length - n)]).join('\n').trimEnd();
+};
+
 /** One hooks object per session: it owns the mtimes at session start. */
 export function createMasterHooks(ctx: MasterHookContext) {
   // Compaction drops earlier injections, so it compares with the session-start mtimes. STATE.md
@@ -136,6 +147,14 @@ export function createMasterHooks(ctx: MasterHookContext) {
     return { lines, unchanged };
   };
 
+  const logTail = async () => {
+    try {
+      return lastEntries(await readFile(resolveInSpace(ctx.root, LOG), 'utf8'), 2);
+    } catch {
+      return undefined;
+    }
+  };
+
   // A failed lookup degrades to the bare instruction: the master reads the plan itself anyway
   const planLine = async () => {
     const plan = await ctx.plan?.().catch(() => undefined);
@@ -153,6 +172,8 @@ export function createMasterHooks(ctx: MasterHookContext) {
     const { lines, unchanged } = await changedFiles();
     if (lines.length) parts.push(SUPERSEDE, ...lines);
     if (unchanged.length) parts.push(`Unchanged since session start, the system-prompt copies are current: ${unchanged.join(', ')}.`);
+    const tail = await logTail();
+    if (tail) parts.push(`${LOG_HEADER}\n${tail}`);
     parts.push(await planLine());
     const rows = roster();
     if (rows.length)

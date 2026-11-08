@@ -262,6 +262,27 @@ describe('context hooks', () => {
     expect(ctx(await start('compact'))).toContain('<file path="a.md">\ntwo\n</file>');
   });
 
+  it('compact injects the last two LOG entries with the heading between them, not the first', async () => {
+    const { root, start } = await setup({});
+    await writeFile(
+      join(root, '.plugin-master/LOG.md'),
+      '# Log\n\n- first entry\n  more first\n- second entry\n  more second\n\n## Day 2\n- third entry\n  more third\n',
+    );
+    const out = ctx(await start('compact'))!;
+    expect(out).toContain(
+      'LOG tail (the last two entries of .plugin-master/LOG.md; do not re-read the file):\n- second entry\n  more second\n\n## Day 2\n- third entry\n  more third',
+    );
+    expect(out).not.toContain('first entry');
+    expect(out.indexOf('LOG tail')).toBeLessThan(out.indexOf('mcp__plan__plan_get'));
+  });
+
+  it('compact without a LOG file, or with no entry line in it, injects no LOG part', async () => {
+    const { root, start } = await setup({});
+    expect(ctx(await start('compact'))).not.toContain('LOG tail');
+    await writeFile(join(root, '.plugin-master/LOG.md'), '# Log\n\nno entries\n');
+    expect(ctx(await start('compact'))).not.toContain('LOG tail');
+  });
+
   it('the roster lists agent tasks only, not background shell tasks', async () => {
     const agent2: AgentTask = { ...agent1, id: 'ag2', subagentType: 'writer' };
     const { start } = await setup({}, [agent1, bash1, agent2]);
