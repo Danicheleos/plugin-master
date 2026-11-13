@@ -61,6 +61,13 @@ describe('masterPreToolUse', () => {
     expect(await run(tool)).toEqual({});
   });
 
+  it('asks for plan_create, also in auto mode and from a subagent', async () => {
+    for (const extra of [{ permission_mode: 'auto' }, { agent_id: 'a1' }])
+      expect(await run('mcp__plan__plan_create', extra)).toMatchObject({
+        hookSpecificOutput: { permissionDecision: 'ask' },
+      });
+  });
+
   it('asks for eval_run, also in auto mode', async () => {
     const r = await run('mcp__evals__eval_run', { permission_mode: 'auto' });
     expect(r).toMatchObject({ hookSpecificOutput: { permissionDecision: 'ask' } });

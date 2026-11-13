@@ -79,6 +79,19 @@ export function planTools(plans: PlansService) {
         return 'Logged.';
       },
     ),
+    plan_create: def(
+      'Create a new top-level plan. Only when the user commands it. It becomes active only when no plan is active; otherwise it is created inactive and the current plan stays active.',
+      { title: z.string().min(1), goal: z.string() },
+      async (a) => {
+        const { plan, activated } = await plans.create({
+          title: a.title,
+          goal: a.goal,
+        });
+        return activated
+          ? `Plan "${plan.title}" (${plan.id}) is now active. It has no phases yet: propose them with plan_set_phases.`
+          : `Plan "${plan.title}" (${plan.id}) created, not active: the current plan stays active.`;
+      },
+    ),
     plan_start_child: def(
       'Create a child plan for a phase that needs its own plan; the child becomes active.',
       { phaseId, title: z.string().min(1), goal: z.string(), phases: titles },
@@ -123,9 +136,12 @@ export async function runTool(run: () => Promise<string>): Promise<Result> {
   }
 }
 
+/** `plan_create` is not listed (like `eval_run`): it goes through `canUseTool`, the user's confirmation. */
 export const PLAN_TOOL_NAMES = (
   Object.keys(planTools({} as PlansService)) as (keyof PlanTools)[]
-).map((n) => `mcp__${PLAN_SERVER}__${n}`);
+)
+  .filter((n) => n !== 'plan_create')
+  .map((n) => `mcp__${PLAN_SERVER}__${n}`);
 
 /** In-process MCP server over `def` tools. */
 export const createToolServer = (

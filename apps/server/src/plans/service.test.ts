@@ -24,8 +24,8 @@ const current = async () => {
 
 describe('plans service', () => {
   it('creates a plan, activates the first one only and persists under .plugin-master/plans', async () => {
-    const a = await plans.create({ title: 'A', goal: 'ga' });
-    const b = await plans.create({ title: 'B', goal: 'gb' });
+    const { plan: a } = await plans.create({ title: 'A', goal: 'ga' });
+    const { plan: b } = await plans.create({ title: 'B', goal: 'gb' });
     expect((await plans.list()).active).toBe(a.id);
     expect((await plans.list()).plans.map((p) => p.title)).toEqual(['A', 'B']);
     expect(await readdir(join(root, '.plugin-master/plans'))).toHaveLength(2);
@@ -50,7 +50,7 @@ describe('plans service', () => {
         JSON.stringify({ masterContext: ['IDEA.md'] }),
       ),
     );
-    const a = await plans.create({ title: 'A', goal: '' });
+    const { plan: a } = await plans.create({ title: 'A', goal: '' });
     expect(
       JSON.parse(
         await readFile(join(root, '.plugin-master/config.json'), 'utf8'),
@@ -98,7 +98,7 @@ describe('plans service', () => {
   });
 
   it('runs a child plan and returns to the parent when it completes', async () => {
-    const parent = await plans.create({ title: 'Parent', goal: '' });
+    const { plan: parent } = await plans.create({ title: 'Parent', goal: '' });
     await plans.setPhases(['big', 'after']);
     const child = await plans.startChild('p1', { title: 'Child', goal: 'cg' }, [
       'c1',
@@ -145,5 +145,11 @@ describe('plans service', () => {
       Array.from({ length: 10 }, (_, i) => plans.addLog(`n${i}`)),
     );
     expect((await current()).plan.log).toHaveLength(11);
+  });
+
+  it('create reports whether it activated the plan', async () => {
+    const plans = createPlansService(root);
+    expect((await plans.create({ title: 'A', goal: '' })).activated).toBe(true);
+    expect((await plans.create({ title: 'B', goal: '' })).activated).toBe(false);
   });
 });

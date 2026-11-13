@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createPlansService } from './service';
-import { planTools, runTool } from './tools';
+import { PLAN_TOOL_NAMES, planTools, runTool } from './tools';
 
 let root: string;
 beforeEach(async () => {
@@ -47,5 +47,39 @@ describe('plan tools', () => {
     const r = await runTool(() => t.phase_start.run({ phaseId: 'p1' }));
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toMatch(/no active plan/);
+  });
+
+  it('plan_create creates a top-level plan and makes it active', async () => {
+    const plans = createPlansService(root);
+    const t = planTools(plans);
+    await plans.create({ title: 'Old', goal: 'g' });
+    await plans.complete('done');
+    expect(await t.plan_create.run({ title: 'New', goal: 'ng' })).toMatch(
+      /Plan "New" \([0-9a-f]{8}\) is now active/,
+    );
+    const cur = await plans.current();
+    expect(cur?.plan).toMatchObject({ title: 'New', goal: 'ng', parentId: null });
+  });
+
+  it('plan_create leaves the active plan active and creates the new one inactive', async () => {
+    const plans = createPlansService(root);
+    const t = planTools(plans);
+    const { plan: top } = await plans.create({ title: 'Top', goal: 'g' });
+    const out = await t.plan_create.run({ title: 'Backlog', goal: 'ng' });
+    expect(out).toMatch(/Plan "Backlog" \([0-9a-f]{8}\) created, not active/);
+    const list = await plans.list();
+    expect(list.plans).toHaveLength(2);
+    expect(list.active).toBe(top.id);
+  });
+
+  it('auto-allows the plan tools except plan_create, which needs the user prompt', () => {
+    expect(PLAN_TOOL_NAMES).not.toContain('mcp__plan__plan_create');
+    expect(PLAN_TOOL_NAMES).toEqual(
+      expect.arrayContaining([
+        'mcp__plan__plan_get',
+        'mcp__plan__plan_start_child',
+        'mcp__plan__plan_complete',
+      ]),
+    );
   });
 });

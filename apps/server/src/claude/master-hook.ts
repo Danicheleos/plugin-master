@@ -19,7 +19,7 @@ const MASTER_ALLOWED_TOOLS: ReadonlySet<string> = new Set([
 const OWN_MCP_PREFIXES = ['mcp__plan__', 'mcp__evals__'];
 
 /** MCP tools that always need the user's confirmation, also in auto/dontAsk modes. */
-const ALWAYS_ASK_TOOLS: ReadonlySet<string> = new Set(['mcp__evals__eval_run']);
+const ALWAYS_ASK_TOOLS: ReadonlySet<string> = new Set(['mcp__evals__eval_run', 'mcp__plan__plan_create']);
 
 const TASK_OUTPUT = /[\\/]tasks[\\/][^\\/]+\.output$/;
 
@@ -33,9 +33,11 @@ const pre = (permissionDecision: 'deny' | 'ask', permissionDecisionReason: strin
  */
 export const createMasterPreToolUse = (agents: Record<string, AgentDefinition>): HookCallback => async (input) => {
   if (input.hook_event_name !== 'PreToolUse') return {};
-  // costs money: asks for subagents too (auto/dontAsk must not approve it)
+  // asks for subagents too (auto/dontAsk must not approve it)
   if (ALWAYS_ASK_TOOLS.has(input.tool_name))
-    return pre('ask', 'Eval runs cost money: the user must confirm.');
+    return pre('ask', input.tool_name === 'mcp__plan__plan_create'
+      ? 'A new plan is created only on the user\'s command: the user must confirm.'
+      : 'Eval runs cost money: the user must confirm.');
   if (input.agent_id) return {};
   // the master read a 37 KB subagent transcript this way instead of delegating; the dir is the
   // Claude temp dir (differs per OS and user), so only the path shape is matched

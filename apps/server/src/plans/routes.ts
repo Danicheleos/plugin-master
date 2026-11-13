@@ -19,7 +19,7 @@ export const plansRoutes =
     app.post<{ Params: { id: string } }>(
       '/spaces/:id/plans',
       async (req, reply) => {
-        const plan = await (
+        const { plan } = await (
           await service(req.params.id)
         ).create(CreatePlanSchema.parse(req.body));
         return reply.code(201).send(plan);

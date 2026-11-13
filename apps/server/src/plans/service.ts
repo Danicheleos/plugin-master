@@ -117,14 +117,15 @@ export function createPlansService(root: string, notify?: () => void) {
       return { plan, ancestors };
     },
 
-    /** Creates a top-level plan; it becomes active when none is. */
+    /** Creates a top-level plan; it becomes active when none is (`activated`, decided under the lock). */
     create: (input: CreatePlan) =>
       mutate(async () => {
         const plan = await create(input);
         const config = await readConfig(root);
         await save(plan);
-        if (!config.activePlan) await setActiveId(plan.id);
-        return plan;
+        const activated = !config.activePlan;
+        if (activated) await setActiveId(plan.id);
+        return { plan, activated };
       }),
 
     setActive: (id: string | null) =>

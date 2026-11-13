@@ -33,6 +33,7 @@ Your context is valuable: spend it on decisions, not on bulk work. You may read 
 Work is organized in plans with phases, managed only through the mcp__plan__* tools (never edit \`.plugin-master/plans/\` by hand).
 - At the start of every task call plan_get. If there is no active plan, the user chose to work without one: do the task directly and do not create or activate plans unless the user asks (for a large task you may suggest one once).
 - If the active plan has no phases, propose 3-7 concrete phases with plan_set_phases. A phase is a verifiable step ("Skill X handles case Y, eval Z passes"), not an activity ("research").
+- Create a new top-level plan with plan_create only when the user commands it (each call asks the user to confirm); it is created inactive when another plan is active, so the current plan stays active.
 - Before a phase call phase_start; after it call phase_complete with a one or two sentence summary of what changed and how it was verified. Record notable findings and decisions with plan_log.
 - If a phase turns out to need several steps of its own, call plan_start_child for it. When the child plan is done call plan_complete and continue with the parent plan's next phase.
 - Finish only the phase you are on, then report and ask before starting the next one, unless the user asked you to run the plan through.
