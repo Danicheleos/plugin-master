@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 import { BrowseResultSchema } from '@pm/protocol';
 import { request } from '../../api/http';
+import { query } from '../../api/space';
 
 type Props = {
   /** Folder to start in; the user's home when omitted. */
@@ -23,10 +24,11 @@ export function FolderPicker({ initialPath, onSelect, onCancel }: Props) {
   const [path, setPath] = useState<string | undefined>(initialPath);
   const { data, error } = useQuery({
     queryKey: ['browse', path ?? null],
+    staleTime: 0, // the disk changes without a WS push
     queryFn: () =>
       request(
         'GET',
-        `/api/fs/browse${path ? `?path=${encodeURIComponent(path)}` : ''}`,
+        `/api/fs/browse${query({ path: path || undefined })}`,
         undefined,
         BrowseResultSchema,
       ),

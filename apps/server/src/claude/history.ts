@@ -1,4 +1,5 @@
 import {
+  deleteSession,
   getSessionMessages,
   listSessions,
 } from '@anthropic-ai/claude-agent-sdk';
@@ -12,6 +13,8 @@ export type History = {
   events(dir: string, sessionId: string): Promise<ChatEvent[]>;
   /** Sessions of every project under `~/.claude/projects`, newest first. */
   all(): Promise<ProjectSession[]>;
+  /** Deletes a session of `dir` (its transcript and subagent transcripts). */
+  remove(dir: string, sessionId: string): Promise<void>;
 };
 
 export const sdkHistory: History = {
@@ -39,5 +42,11 @@ export const sdkHistory: History = {
         project: s.cwd ? basename(s.cwd) || s.cwd : 'unknown',
       }))
       .sort((a, b) => b.lastModified - a.lastModified);
+  },
+  async remove(dir, sessionId) {
+    // a session listed from a git worktree of `dir` lives under that worktree's project dir
+    await deleteSession(sessionId, { dir }).catch(() =>
+      deleteSession(sessionId),
+    );
   },
 };

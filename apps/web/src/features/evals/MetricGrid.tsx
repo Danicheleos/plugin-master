@@ -1,9 +1,9 @@
 import { Group, NumberInput } from '@mantine/core';
-import { MetricChart } from './MetricChart';
-import { PickMenu } from './PickMenu';
+import { MetricChart } from '../../shared/trace/MetricChart';
+import { PickMenu } from '../../shared/table/PickMenu';
 import { METRICS, type MetricRun } from './metrics';
 import { useEvalPrefs } from './prefs';
-import { stamp } from './format';
+import { stamp, shortHash } from '../../shared/format';
 import styles from './evals.module.scss';
 
 /**
@@ -21,7 +21,13 @@ export function MetricGrid({ runs }: { runs: MetricRun[] }) {
       const when = stamp(r.startedAt) ?? r.runId;
       const b = m.get(r.baselineMetrics ?? {});
       const vs = b === undefined ? '' : ` (baseline ${m.format(b)})`;
-      return [{ key: r.runId, value, title: `${when} · ${m.format(value)}${vs}${r.commit ? ` · ${r.commit.slice(0, 7)}` : ''}` }];
+      return [
+        {
+          key: r.runId,
+          value,
+          title: `${when} · ${m.format(value)}${vs}${r.commit ? ` · ${shortHash(r.commit)}` : ''}`,
+        },
+      ];
     });
     const baseline = ordered.flatMap((r) => {
       const value = m.get(r.baselineMetrics ?? {});
@@ -50,13 +56,28 @@ export function MetricGrid({ runs }: { runs: MetricRun[] }) {
           min={1}
           allowDecimal={false}
           value={prefs.limit ?? ''}
-          onChange={(v) => update(() => ({ limit: typeof v === 'number' && v > 0 ? v : undefined }))}
+          onChange={(v) =>
+            update(() => ({
+              limit: typeof v === 'number' && v > 0 ? v : undefined,
+            }))
+          }
         />
       </Group>
       <div className={styles.metrics}>
-        {charts.filter((c) => selected.has(c.id)).map((m) => (
-          <MetricChart key={m.id} label={m.label} points={m.points} baseline={m.baseline} format={m.format} max={m.max} className={styles.gridMetric} height={80} />
-        ))}
+        {charts
+          .filter((c) => selected.has(c.id))
+          .map((m) => (
+            <MetricChart
+              key={m.id}
+              label={m.label}
+              points={m.points}
+              baseline={m.baseline}
+              format={m.format}
+              max={m.max}
+              className={styles.gridMetric}
+              height={80}
+            />
+          ))}
       </div>
     </>
   );

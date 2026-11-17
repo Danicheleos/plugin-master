@@ -46,6 +46,17 @@ export const CHAT_MODEL_IDS = Object.keys(CHAT_MODELS) as [
   ...ChatModel[],
 ];
 
+/** Reasoning effort of the chat; `default` = the model's own default. */
+export const CHAT_EFFORTS = [
+  'default',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const;
+export type ChatEffort = (typeof CHAT_EFFORTS)[number];
+
 export type AgentTask = {
   id: string;
   description: string;
@@ -56,6 +67,12 @@ export type AgentTask = {
   tokens: number;
   toolUses: number;
   lastTool?: string;
+  /** id of the Agent/Task tool call that started it: its trace is that call's turns */
+  toolUseId?: string;
+  /** the Agent call's `name` or `subagent_type` */
+  name?: string;
+  /** the subagent's latest tool call, e.g. `Read: src/a.ts` */
+  action?: string;
 };
 
 export type ContextUsage = {

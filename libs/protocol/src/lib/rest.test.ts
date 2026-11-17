@@ -33,12 +33,13 @@ describe('session isolation keys', () => {
     const c = SpaceConfigSchema.parse({ masterContext: [] });
     expect(c.disabledPlugins).toEqual([]);
     expect(c.autoMemory).toBe(true);
+    expect(c.systemPrompt).toBe('preset');
   });
   it('accept valid values', () => {
-    const c = SpaceConfigSchema.parse({ masterContext: [], disabledPlugins: ['a@b'], autoMemory: false });
-    expect(c).toMatchObject({ disabledPlugins: ['a@b'], autoMemory: false });
+    const c = SpaceConfigSchema.parse({ masterContext: [], disabledPlugins: ['a@b'], autoMemory: false, systemPrompt: 'custom' });
+    expect(c).toMatchObject({ disabledPlugins: ['a@b'], autoMemory: false, systemPrompt: 'custom' });
   });
-  it.each([{ disabledPlugins: 'a@b' }, { disabledPlugins: [1] }, { disabledPlugins: [''] }, { autoMemory: 'no' }])(
+  it.each([{ disabledPlugins: 'a@b' }, { disabledPlugins: [1] }, { disabledPlugins: [''] }, { autoMemory: 'no' }, { systemPrompt: 'none' }])(
     'reject %j',
     (bad) => {
       expect(SpaceConfigSchema.safeParse({ masterContext: [], ...bad }).success).toBe(false);

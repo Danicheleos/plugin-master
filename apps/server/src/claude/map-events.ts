@@ -4,7 +4,21 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentTask, ChatEvent } from '@pm/protocol';
 
-const PREVIEW_CHARS = 500;
+const PREVIEW_CHARS = 200;
+const INPUT_CHARS = 200;
+const INPUT_DEPTH = 4;
+
+/** A tool input for the live chat: every string cut to INPUT_CHARS (Write/Edit carry whole files); the full input stays in the run trace. */
+export function clipInput(v: unknown, depth = 0): unknown {
+  if (typeof v === 'string')
+    return v.length > INPUT_CHARS ? `${v.slice(0, INPUT_CHARS)}…` : v;
+  if (v === null || typeof v !== 'object') return v;
+  if (depth >= INPUT_DEPTH) return clipInput(JSON.stringify(v), depth);
+  if (Array.isArray(v)) return v.map((x) => clipInput(x, depth + 1));
+  return Object.fromEntries(
+    Object.entries(v).map(([k, x]) => [k, clipInput(x, depth + 1)]),
+  );
+}
 
 type Block = { type?: string; [k: string]: unknown };
 
@@ -62,7 +76,7 @@ export function mapSdkBlocks(m: SDKMessage): ChatEvent[] {
             kind: 'tool_use',
             id: String(b.id),
             name: String(b.name),
-            input: b.input,
+            input: clipInput(b.input),
           },
         ];
       return [];
@@ -128,6 +142,7 @@ export function mapTaskMessage(m: SDKMessage): TaskUpdate | undefined {
       description: m.description,
       ...(m.subagent_type && { subagentType: m.subagent_type }),
       ...(m.task_type && { taskType: m.task_type }),
+      ...(m.tool_use_id && { toolUseId: m.tool_use_id }),
       status: 'running',
       tokens: 0,
       toolUses: 0,

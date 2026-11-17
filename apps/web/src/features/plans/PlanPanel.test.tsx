@@ -1,7 +1,7 @@
 import { MantineProvider } from '@mantine/core';
+import type { Plan } from '@pm/protocol';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { Plan } from '@pm/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { PlanPanel } from './PlanPanel';
 import { plansKey } from './hooks';
@@ -60,7 +60,7 @@ describe('PlanPanel', () => {
             stats={{
               master: {
                 tokens: 123000,
-                max: 300000,
+                max: 150000,
                 percent: 41,
                 limit: 267000,
               },

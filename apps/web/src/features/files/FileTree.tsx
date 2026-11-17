@@ -1,5 +1,5 @@
 import { ActionIcon, Group, NavLink, Text, Tooltip } from '@mantine/core';
-import { ContextToggle } from '../context/ContextToggle';
+import { ContextToggle } from '../context';
 import { useDir } from './hooks';
 import styles from './files.module.scss';
 

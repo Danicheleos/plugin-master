@@ -19,6 +19,7 @@ pnpm comes from corepack (`corepack enable pnpm`; version pinned in `packageMana
 
 - `pnpm dev`: serves `server` (builds with esbuild, runs `dist/main.js`, prints the open URL with token) and `web` (Vite on 5100) in parallel.
 - `pnpm dev:self`: same, but the server is not rebuilt/restarted on changes (`serve` configuration `self`, `watch: false`). Use it when plugin-master is opened as a space in itself: under `pnpm dev`, the agent's own edits of server code restart the server and kill its Claude process (exit 143); the chat error then explains this.
+- `pnpm build` / `pnpm start` / `pnpm start:lan`: production mode. `build` builds the server bundle (production, no sourcemaps) and the web app (`vite build`); `start` builds if needed (nx cache), then runs `node apps/server/dist/main.js` (`server:start`, no watch: agent edits never restart it, like `dev:self`) and `vite preview` of `apps/web/dist` on `PM_WEB_PORT` with the same host and `/api`/`/ws` proxy as dev, so token, Origin allowlist and LAN mode work unchanged. Unlike the dev server, preview serves no source or `/@fs/` files. New code needs a restart of `pnpm start`. Dev and start use the same ports and `apps/server/dist`: run one at a time (or set `PM_PORT`/`PM_WEB_PORT`).
 - `pnpm check`: `nx run-many -t lint typecheck test`. Must be green before finishing an iteration.
 - One project: `pnpm nx test server`, `pnpm nx typecheck web`, `pnpm nx lint @pm/protocol`.
 - One test: `pnpm nx test server -- -t "<test name>"` or `pnpm nx test server -- src/spaces/service.test.ts`.

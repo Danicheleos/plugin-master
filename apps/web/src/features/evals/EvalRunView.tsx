@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Markdown from 'react-markdown';
 import {
   Alert,
@@ -21,14 +21,20 @@ import type {
   EvalGraderResult,
   EvalRunResult,
 } from '@pm/protocol';
-import { DataTable } from './DataTable';
+import { EvalDataTable } from './EvalDataTable';
 import { EvalCompare } from './EvalCompare';
 import { MetricGrid } from './MetricGrid';
 import { RunsTable } from './EvalSuitesList';
-import { MetricsLine, TraceBody, TraceModal } from './TraceView';
+import { MetricsLine, TraceBody } from '../../shared/trace/TraceView';
+import { TraceModal } from './TraceModal';
 import { ExportCasesButton } from './ExportCasesButton';
 import { runCaseColumns } from './columns';
-import { splitRepetitions, type RepCase } from './compare';
+import {
+  latestPerCase,
+  repeatedCaseNames,
+  splitRepetitions,
+  type RepCase,
+} from './compare';
 import {
   useEvalReport,
   useEvalRun,
@@ -37,8 +43,9 @@ import {
   type TraceTarget,
 } from './hooks';
 import { useEvalPrefs, useOpen, useOpens } from './prefs';
-import { cost, duration, score, scoreColor, stamp } from './format';
+import { cost, duration, score, scoreColor, stamp } from '../../shared/format';
 import styles from './evals.module.scss';
+import { QueryError } from '../../shared/ui/QueryError';
 
 type Props = {
   spaceId: string;
@@ -71,7 +78,6 @@ export function EvalRunView({
   const { data, error } = useEvalRun(spaceId, runId, group);
   const [report, setReport] = useState<string | null>(null);
   const [trace, setTrace] = useState<TraceTarget | null>(null);
-  const merged = data?.group;
   return (
     <div>
       <Group mb="sm">
@@ -98,23 +104,16 @@ export function EvalRunView({
           }
         />
       </Group>
-      {error && <Text c="red">{error.message}</Text>}
+      {error && <QueryError error={error} />}
       {data && (
         <RunBody
+          key={`${group ? 'g:' : ''}${runId}`}
           spaceId={spaceId}
           runId={runId}
-          result={data.result}
+          data={data}
           focusCase={focusCase}
           compareWith={compareWith}
           onSwitch={onSwitch}
-          unknownSchema={data.unknownSchema}
-          invocations={merged?.runIds.length}
-          stamps={Object.fromEntries(
-            (merged?.runs ?? []).map((r) => [r.id, stamp(r.startedAt)]),
-          )}
-          reports={
-            new Set(merged?.runs.filter((r) => r.hasReport).map((r) => r.id))
-          }
           onReport={setReport}
           onTrace={setTrace}
           onOpenFile={
@@ -143,58 +142,41 @@ export function EvalRunView({
   );
 }
 
+type RunData = NonNullable<ReturnType<typeof useEvalRun>['data']>;
+
+/** The run page body: summary line, comparison (or run switcher) and the case table. */
 function RunBody({
   spaceId,
   runId,
-  result,
+  data,
   focusCase,
   compareWith,
   onSwitch,
-  unknownSchema,
-  invocations,
-  stamps,
-  reports,
   onReport,
   onTrace,
   onOpenFile,
 }: {
   spaceId: string;
   runId: string;
-  result: NonNullable<ReturnType<typeof useEvalRun>['data']>['result'];
+  data: RunData;
   focusCase?: string;
   compareWith?: string;
   onSwitch?: (runId: string) => void;
-  unknownSchema: boolean;
-  /** merged group view: number of CLI invocations */
-  invocations?: number;
-  /** merged group view: start time per invocation, to tell repeated cases apart */
-  stamps?: Record<string, string | undefined>;
-  reports: ReadonlySet<string>;
   onReport: (runId: string) => void;
   onTrace: (t: TraceTarget) => void;
   onOpenFile?: (path: string) => void;
 }) {
-  const { aggregates: a, suite } = result;
-  const threshold = suite.threshold ?? 1;
-  const cases = focusCase
-    ? result.cases.filter((c) => c.name === focusCase)
-    : result.cases;
-  const repeated = new Set(
-    cases
-      .filter((c, i) => cases.findIndex((x) => x.name === c.name) !== i)
-      .map((c) => c.name),
+  const { result } = data;
+  const cases = useMemo(
+    () =>
+      focusCase
+        ? result.cases.filter((c) => c.name === focusCase)
+        : result.cases,
+    [result.cases, focusCase],
   );
-  // the comparison takes one result per case: the latest invocation
-  const latest = [...new Map(cases.map((c) => [c.name, c])).values()];
-  const { isOpen, toggle } = useOpens();
-  const [{ split }, update] = useEvalPrefs();
-  const manyReps = cases.some((c) => c.arms.with.length > 1);
-  const rows: RepCase[] = split ? splitRepetitions(cases) : cases;
-  const caseKey = (c: RepCase) =>
-    `run:${runId}:case:${c.name}${c.runId ? `:${c.runId}` : ''}${c.rep ? `:rep${c.rep}` : ''}`;
   return (
     <>
-      {unknownSchema && (
+      {data.unknownSchema && (
         <Alert color="yellow" mb="sm">
           Unknown schemaVersion ({result.schemaVersion}): some fields may be
           missing.
@@ -205,39 +187,141 @@ function RunBody({
           Partial run: {result.partialReason ?? 'stopped early'}
         </Alert>
       )}
-      <Group mb="md" gap="lg">
-        <Text c={scoreColor(a.overallScore, threshold)} fw={600}>
-          Score {score(a.overallScore)}
-        </Text>
-        <Text>
-          Passed {a.casesPassed ?? 0}/{a.casesTotal ?? result.cases.length}
-        </Text>
-        <Text>Cost {cost(result.costUsd)}</Text>
-        <Text>Time {duration(result.durationSeconds)}</Text>
-        <Text c="dimmed">Claude {result.claudeVersion ?? '-'}</Text>
-        {suite.modelOverride && <Text c="dimmed">{suite.modelOverride}</Text>}
-        {invocations !== undefined && (
-          <Text c="dimmed">{invocations} invocations</Text>
-        )}
-      </Group>
-      {focusCase !== undefined ? (
-        onSwitch && (
-          <RunSwitcher
-            spaceId={spaceId}
-            runId={runId}
-            caseName={focusCase}
-            onSwitch={onSwitch}
-          />
-        )
-      ) : (
-        <EvalCompare
-          key={compareWith}
+      <RunSummary result={result} invocations={data.group?.runIds.length} />
+      <RunComparison
+        spaceId={spaceId}
+        runId={runId}
+        cases={cases}
+        focusCase={focusCase}
+        compareWith={compareWith}
+        onSwitch={onSwitch}
+      />
+      <RunCaseTable
+        spaceId={spaceId}
+        runId={runId}
+        result={result}
+        cases={cases}
+        group={data.group}
+        onReport={onReport}
+        onTrace={onTrace}
+        onOpenFile={onOpenFile}
+      />
+    </>
+  );
+}
+
+function RunSummary({
+  result,
+  invocations,
+}: {
+  result: RunData['result'];
+  /** merged group view: number of CLI invocations */
+  invocations?: number;
+}) {
+  const { aggregates: a, suite } = result;
+  return (
+    <Group mb="md" gap="lg">
+      <Text c={scoreColor(a.overallScore, suite.threshold ?? 1)} fw={600}>
+        Score {score(a.overallScore)}
+      </Text>
+      <Text>
+        Passed {a.casesPassed ?? 0}/{a.casesTotal ?? result.cases.length}
+      </Text>
+      <Text>Cost {cost(result.costUsd)}</Text>
+      <Text>Time {duration(result.durationSeconds)}</Text>
+      <Text c="dimmed">Claude {result.claudeVersion ?? '-'}</Text>
+      {suite.modelOverride && <Text c="dimmed">{suite.modelOverride}</Text>}
+      {invocations !== undefined && (
+        <Text c="dimmed">{invocations} invocations</Text>
+      )}
+    </Group>
+  );
+}
+
+/** A focused case switches between its runs; otherwise the run is compared with a baseline. */
+function RunComparison({
+  spaceId,
+  runId,
+  cases,
+  focusCase,
+  compareWith,
+  onSwitch,
+}: {
+  spaceId: string;
+  runId: string;
+  cases: EvalCase[];
+  focusCase?: string;
+  compareWith?: string;
+  onSwitch?: (runId: string) => void;
+}) {
+  // the comparison takes one result per case: the latest invocation
+  const latest = useMemo(() => latestPerCase(cases), [cases]);
+  if (focusCase !== undefined)
+    return (
+      onSwitch && (
+        <RunSwitcher
           spaceId={spaceId}
           runId={runId}
-          cases={latest}
-          initialBaseline={compareWith}
+          caseName={focusCase}
+          onSwitch={onSwitch}
         />
-      )}
+      )
+    );
+  return (
+    <EvalCompare
+      key={compareWith}
+      spaceId={spaceId}
+      runId={runId}
+      cases={latest}
+      initialBaseline={compareWith}
+    />
+  );
+}
+
+function RunCaseTable({
+  spaceId,
+  runId,
+  result,
+  cases,
+  group,
+  onReport,
+  onTrace,
+  onOpenFile,
+}: {
+  spaceId: string;
+  runId: string;
+  result: RunData['result'];
+  cases: EvalCase[];
+  /** merged group view: start time and report per invocation */
+  group?: RunData['group'];
+  onReport: (runId: string) => void;
+  onTrace: (t: TraceTarget) => void;
+  onOpenFile?: (path: string) => void;
+}) {
+  const threshold = result.suite.threshold ?? 1;
+  const { isOpen, toggle } = useOpens();
+  const [{ split }, update] = useEvalPrefs();
+  const repeated = useMemo(() => repeatedCaseNames(cases), [cases]);
+  const stamps = useMemo(
+    () =>
+      Object.fromEntries(
+        (group?.runs ?? []).map((r) => [r.id, stamp(r.startedAt)]),
+      ),
+    [group],
+  );
+  const reports = useMemo(
+    () => new Set(group?.runs.filter((r) => r.hasReport).map((r) => r.id)),
+    [group],
+  );
+  const manyReps = cases.some((c) => c.arms.with.length > 1);
+  const rows: RepCase[] = useMemo(
+    () => (split ? splitRepetitions(cases) : cases),
+    [split, cases],
+  );
+  const caseKey = (c: RepCase) =>
+    `run:${runId}:case:${c.name}${c.runId ? `:${c.runId}` : ''}${c.rep ? `:rep${c.rep}` : ''}`;
+  return (
+    <>
       {manyReps && (
         <Switch
           size="xs"
@@ -247,7 +331,7 @@ function RunBody({
           onChange={(e) => update(() => ({ split: e.currentTarget.checked }))}
         />
       )}
-      <DataTable
+      <EvalDataTable
         kind="runCases"
         columns={runCaseColumns({
           threshold,
@@ -255,7 +339,7 @@ function RunBody({
           toggle: (c) => toggle(caseKey(c), false),
           suffix: (c) =>
             repeated.has(c.name)
-              ? (c.runId && stamps?.[c.runId]) || c.runId
+              ? (c.runId && stamps[c.runId]) || c.runId
               : undefined,
           onOpenFile,
           onReport: (c) =>
@@ -354,7 +438,10 @@ function Arm({
       {runs.map((r, j) => {
         const i = j + offset;
         return (
-          <div key={i} className={styles.graders}>
+          <div
+            key={`${runId}:${c.name}:${title}:${i}`}
+            className={styles.graders}
+          >
             <Group gap="md">
               <Text size="sm">Run {i + 1}</Text>
               <Text size="sm" c={scoreColor(r.score)}>
@@ -395,6 +482,7 @@ function Arm({
               </Text>
             )}
             <RunDetails
+              key={runId}
               spaceId={spaceId}
               c={c}
               r={r}
@@ -462,7 +550,7 @@ function InlineFlow({
   target: TraceTarget;
 }) {
   const { data, error } = useEvalTrace(spaceId, target);
-  if (error) return <Text c="red">{error.message}</Text>;
+  if (error) return <QueryError error={error} />;
   return data ? (
     <TraceBody trace={data} />
   ) : (
@@ -536,7 +624,7 @@ function ReportModal({
   const { data, error } = useEvalReport(spaceId, runId);
   return (
     <Modal opened onClose={onClose} title="Eval report" size="90%">
-      {error && <Text c="red">{error.message}</Text>}
+      {error && <QueryError error={error} />}
       {data !== undefined && (
         // scripts may run but the document has no origin (no allow-same-origin)
         <iframe

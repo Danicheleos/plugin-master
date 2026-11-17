@@ -1,16 +1,13 @@
-import { Anchor, Badge, Group, Text } from '@mantine/core';
+import { Badge, Text } from '@mantine/core';
 import type { EvalTarget } from '@pm/protocol';
 import { CasesTable } from './EvalSuitesList';
 import { ExportCasesButton } from './ExportCasesButton';
 import { deltaColor, type OpenCase } from './columns';
 import { MetricGrid } from './MetricGrid';
 import { useEvalTargets } from './hooks';
-import { useOpen } from './prefs';
-import { delta, score, scoreColor } from './format';
-import styles from './evals.module.scss';
-
-const bytes = (n?: number) =>
-  n === undefined ? '-' : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`;
+import { CollapsibleSection } from './CollapsibleSection';
+import { bytes, delta, score, scoreColor } from '../../shared/format';
+import { QueryError } from '../../shared/ui/QueryError';
 
 /** Skills and agents of the plugin with the trends of their eval cases (see server `evals/targets.ts`). */
 export function EvalTargetsList({
@@ -21,7 +18,7 @@ export function EvalTargetsList({
   onOpen: OpenCase;
 }) {
   const { data, error } = useEvalTargets(spaceId);
-  if (error) return <Text c="red">{error.message}</Text>;
+  if (error) return <QueryError error={error} />;
   if (!data) return null;
   if (!data.targets.length && !data.unmapped.cases.length)
     return (
@@ -61,56 +58,49 @@ function Target({
   onOpen: OpenCase;
 }) {
   const key = `target:${kind ?? 'unmapped'}:${t.name}`;
-  const [open, toggle] = useOpen(key);
   const latest = t.runs[0];
   return (
-    <section className={styles.suite}>
-      <Group gap="xs" mb="xs">
-        <Anchor
-          component="button"
-          fw={600}
-          aria-expanded={open}
-          onClick={toggle}
-        >
-          {open ? '▾' : '▸'} {t.name}
-        </Anchor>
-        <Badge
-          variant="light"
-          color={kind === 'agent' ? 'grape' : kind ? 'blue' : 'gray'}
-        >
-          {kind ?? 'unmapped'}
-        </Badge>
-        <Text size="xs" c="dimmed">
-          {t.cases.length} cases
-        </Text>
-        <Text size="sm" c={scoreColor(latest?.score)}>
-          {score(latest?.score)}
-        </Text>
-        <Text size="sm" c={deltaColor(latest?.delta)}>
-          {delta(latest?.delta)}
-        </Text>
-        <ExportCasesButton
-          spaceId={spaceId}
-          cases={t.cases.map((c) => c.name)}
-        />
-        {kind && (
-          <Text size="xs" c="dimmed">
-            context {bytes(t.contextBytes)}
-          </Text>
-        )}
-      </Group>
-      {open && (
+    <CollapsibleSection
+      openKey={key}
+      anchor={(open) => `${open ? '▾' : '▸'} ${t.name}`}
+      anchorProps={{ fw: 600 }}
+      header={
         <>
-          <MetricGrid runs={t.runs} />
-          <CasesTable
+          <Badge
+            variant="light"
+            color={kind === 'agent' ? 'grape' : kind ? 'blue' : 'gray'}
+          >
+            {kind ?? 'unmapped'}
+          </Badge>
+          <Text size="xs" c="dimmed">
+            {t.cases.length} cases
+          </Text>
+          <Text size="sm" c={scoreColor(latest?.score)}>
+            {score(latest?.score)}
+          </Text>
+          <Text size="sm" c={deltaColor(latest?.delta)}>
+            {delta(latest?.delta)}
+          </Text>
+          <ExportCasesButton
             spaceId={spaceId}
-            cases={t.cases}
-            openKey={key}
-            showHeader
-            onOpen={onOpen}
+            cases={t.cases.map((c) => c.name)}
           />
+          {kind && (
+            <Text size="xs" c="dimmed">
+              context {bytes(t.contextBytes)}
+            </Text>
+          )}
         </>
-      )}
-    </section>
+      }
+    >
+      <MetricGrid runs={t.runs} />
+      <CasesTable
+        spaceId={spaceId}
+        cases={t.cases}
+        openKey={key}
+        showHeader
+        onOpen={onOpen}
+      />
+    </CollapsibleSection>
   );
 }

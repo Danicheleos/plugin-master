@@ -17,8 +17,8 @@ export const EvalGraderResultSchema = loose({
 export type EvalGraderResult = z.infer<typeof EvalGraderResultSchema>;
 
 export const EvalRunResultSchema = loose({
-  score: z.number().optional(),
-  passed: z.boolean().optional(),
+  score: z.number().nullish().transform((v) => v ?? undefined).optional(),
+  passed: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   turns: z.number().optional(),
   costUsd: z.number().optional(),
   judgeCostUsd: z.number().optional(),
@@ -61,8 +61,8 @@ export const EvalCaseSchema = loose({
     without: z.array(EvalRunResultSchema).default([]),
   }).default({ with: [], without: [] }),
   aggregates: loose({
-    score: z.number().optional(),
-    passRate: z.number().optional(),
+    score: z.number().nullish().transform((v) => v ?? undefined).optional(),
+    passRate: z.number().nullish().transform((v) => v ?? undefined).optional(),
     scoreWithout: z.number().optional(),
     delta: z.number().optional(),
   }).default({}),

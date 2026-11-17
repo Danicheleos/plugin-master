@@ -1,7 +1,14 @@
 import { useState } from 'react';
-import { Button, Group, MultiSelect, NumberInput, Stack, Textarea } from '@mantine/core';
-import { ScaffoldCheckbox, TrustCheckbox } from '../evals/Consent';
-import { useEvalSuite } from '../evals/hooks';
+import {
+  Button,
+  Group,
+  MultiSelect,
+  NumberInput,
+  Stack,
+  Textarea,
+} from '@mantine/core';
+import { ScaffoldCheckbox, TrustCheckbox } from '../evals';
+import { useEvalSuite } from '../evals';
 import { ApiAlert } from './ApiAlert';
 import { useRunExperiment } from './hooks';
 
@@ -53,11 +60,23 @@ export function StartForm({ spaceId }: { spaceId: string }) {
           searchable
         />
       </Group>
-      <Textarea label="Focus (optional)" size="xs" rows={2} value={focus} onChange={(e) => setFocus(e.target.value)} />
+      <Textarea
+        label="Focus (optional)"
+        size="xs"
+        rows={2}
+        value={focus}
+        onChange={(e) => setFocus(e.target.value)}
+      />
       <ScaffoldCheckbox checked={scaffold} onChange={setScaffold} />
       <TrustCheckbox spaceId={spaceId} />
       {run.error && <ApiAlert error={run.error} />}
-      <Button type="submit" size="xs" disabled={!valid} loading={run.isPending} w="fit-content">
+      <Button
+        type="submit"
+        size="xs"
+        disabled={!valid}
+        loading={run.isPending}
+        w="fit-content"
+      >
         Run experiment
       </Button>
     </Stack>

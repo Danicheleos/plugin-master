@@ -36,3 +36,56 @@
   padding-left: var(--mantine-spacing-xs);
   border-left: 2px solid var(--mantine-color-default-border);
 }
+
+.tableWrap {
+  overflow-x: auto;
+  margin: var(--mantine-spacing-xs) 0;
+
+  table {
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    border: 1px solid var(--mantine-color-default-border);
+    padding: 4px var(--mantine-spacing-xs);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: var(--mantine-color-default-hover);
+  }
+}
+
+.sessionToggle {
+  border-bottom: 1px solid var(--mantine-color-default-border);
+  padding: 2px var(--mantine-spacing-xs);
+}
+
+.controls {
+  border-bottom: 1px solid var(--mantine-color-default-border);
+  padding: var(--mantine-spacing-xs);
+}
+
+.agents {
+  border-top: 1px solid var(--mantine-color-default-border);
+  padding: 2px var(--mantine-spacing-xs);
+  font-size: var(--mantine-font-size-xs);
+  max-height: 96px;
+  overflow: auto;
+}
+
+/* expanded input: the textarea takes the panel height (the list is hidden meanwhile) */
+.panelExpanded .list {
+  display: none;
+}
+
+.panelExpanded .input {
+  flex: 1;
+  min-height: 0;
+}
+
+.panelExpanded .inputGrow {
+  height: 100%;
+}

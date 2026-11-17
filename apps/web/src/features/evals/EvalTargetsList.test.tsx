@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { EvalTargetsResponseSchema } from '@pm/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import { EvalTargetsList } from './EvalTargetsList';
-import { stamp } from './format';
+import { stamp } from '../../shared/format';
 import { evalsKey } from './hooks';
 
 const request = vi.hoisted(() => vi.fn());
@@ -152,6 +152,7 @@ describe('EvalTargetsList', () => {
         'PUT',
         '/api/spaces/s/evals/baseline',
         { case: 'c1', runId: 'r1' },
+        expect.anything(),
       ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Unset baseline r2' }));
@@ -160,6 +161,7 @@ describe('EvalTargetsList', () => {
         'PUT',
         '/api/spaces/s/evals/baseline',
         { case: 'c1', runId: null },
+        expect.anything(),
       ),
     );
   });

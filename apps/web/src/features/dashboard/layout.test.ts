@@ -2,6 +2,12 @@ import { FeaturesSchema } from '@pm/protocol';
 import { describe, expect, it } from 'vitest';
 import {
   addItem,
+  breakpointFor,
+  clampRect,
+  deriveRect,
+  layoutFor,
+  parseBpLayouts,
+  storeLayout,
   DEFAULT_ITEMS,
   duplicateItem,
   parseItems,
@@ -26,8 +32,9 @@ describe('parseItems', () => {
       { i: 'nope', x: 0, y: 0, w: 1, h: 1 },
       { i: 'plan', x: 'a', y: 0, w: 1, h: 1 },
     ]);
+    // pinning is off: a stored pin is dropped
     expect(parseItems(raw)).toEqual([
-      { i: 'chat', type: 'chat', x: 1, y: 2, w: 3, h: 4, static: true },
+      { i: 'chat', type: 'chat', x: 1, y: 2, w: 3, h: 4 },
     ]);
     expect(parseItems('[]')).toEqual([]);
   });
@@ -188,12 +195,11 @@ describe('duplicateItem', () => {
       y: 0,
       w: 6,
       h: 7,
-      static: true,
       file: 'a.md',
     },
   ];
 
-  it('copies size and file with a unique id, never the pin', () => {
+  it('copies size and file with a unique id', () => {
     const next = duplicateItem(duplicateItem(items, 'editor'), 'editor');
     expect(next.map((it) => it.i)).toEqual(['editor', 'editor-2', 'editor-3']);
     expect(next[1]).toEqual({
@@ -207,7 +213,6 @@ describe('duplicateItem', () => {
       file: 'a.md',
     });
     expect(next[2]).toMatchObject({ x: 3, y: 0, z: 2 });
-    expect(next[2]).not.toHaveProperty('static');
   });
 
   it('ignores an unknown id and reuses a freed id', () => {
@@ -264,5 +269,112 @@ describe('toggleCollapsed', () => {
     const c = toggleCollapsed([w], 'a');
     expect(parseItems(JSON.stringify(c))[0]).toMatchObject({ h: 1, prevH: 9 });
     expect(duplicateItem(c, 'a')[1]).toMatchObject({ h: 9 });
+  });
+});
+
+describe('responsive layouts', () => {
+  it('picks the breakpoint by width', () => {
+    expect(breakpointFor(1400)).toBe('lg');
+    expect(breakpointFor(1000)).toBe('md');
+    expect(breakpointFor(700)).toBe('sm');
+  });
+
+  it('derives scaled and clamped rects from lg', () => {
+    expect(deriveRect({ x: 6, y: 3, w: 6, h: 5 }, 12)).toEqual({
+      x: 6,
+      y: 3,
+      w: 6,
+      h: 5,
+    });
+    expect(deriveRect({ x: 6, y: 3, w: 6, h: 5 }, 4)).toEqual({
+      x: 2,
+      y: 3,
+      w: 2,
+      h: 5,
+    });
+    expect(deriveRect({ x: 11, y: 0, w: 1, h: 2 }, 4)).toEqual({
+      x: 2,
+      y: 0,
+      w: 2,
+      h: 2,
+    });
+    expect(clampRect({ x: 7, y: 1, w: 9, h: 2 }, 8)).toEqual({
+      x: 0,
+      y: 1,
+      w: 8,
+      h: 2,
+    });
+  });
+
+  const base: Item[] = [
+    { i: 'a', type: 'chat', x: 0, y: 0, w: 6, h: 4 },
+    { i: 'b', type: 'files', x: 6, y: 0, w: 6, h: 4 },
+  ];
+  it('uses lg as is, a stored rect when present, else derived', () => {
+    expect(layoutFor(base, 'lg')).toEqual(base);
+    const md = layoutFor(base, 'md');
+    expect(md[0]).toMatchObject({ x: 0, w: 4 });
+    expect(md[1]).toMatchObject({ x: 4, w: 4 });
+    const own = layoutFor(base, 'sm', {
+      sm: { a: { x: 0, y: 9, w: 4, h: 3 } },
+    });
+    expect(own[0]).toMatchObject({ y: 9, h: 3 });
+    expect(own[1]).toMatchObject({ x: 2, w: 2 });
+  });
+
+  it('keeps a collapsed widget one row high', () => {
+    const c = toggleCollapsed(base, 'a');
+    expect(layoutFor(c, 'md')[0]).toMatchObject({ h: 1, prevH: 4 });
+  });
+
+  it('stores only what differs from the derived layout', () => {
+    const shown = layoutFor(base, 'md');
+    const same = storeLayout(base, {}, 'md', shown);
+    expect(same).toEqual({});
+    const moved = shown.map((it) => (it.i === 'a' ? { ...it, y: 7 } : it));
+    const st = storeLayout(base, {}, 'md', moved);
+    expect(st).toEqual({ md: { a: { x: 0, y: 7, w: 4, h: 4 } } });
+    expect(storeLayout(base, st, 'md', layoutFor(base, 'md', st))).toBe(st);
+    expect(layoutFor(base, 'lg')[0].y).toBe(0); // lg untouched
+  });
+
+  it('parses stored layouts defensively', () => {
+    expect(parseBpLayouts(null)).toEqual({});
+    expect(parseBpLayouts('{oops')).toEqual({});
+    expect(parseBpLayouts('[1]')).toEqual({});
+    expect(
+      parseBpLayouts(
+        JSON.stringify({
+          md: {
+            a: { x: 1, y: 2, w: 3, h: 4 },
+            b: { x: 'q', y: 0, w: 1, h: 1 },
+          },
+          sm: 5,
+          lg: { a: { x: 0, y: 0, w: 1, h: 1 } },
+        }),
+      ),
+    ).toEqual({ md: { a: { x: 1, y: 2, w: 3, h: 4 } } });
+  });
+
+  it('loads an old stored list as the lg layout', () => {
+    const old = JSON.stringify([
+      { i: 'chat', type: 'chat', x: 1, y: 2, w: 3, h: 4, static: true },
+    ]);
+    expect(parseItems(old)[0]).toMatchObject({ x: 1 });
+    expect(parseItems(old)[0]).not.toHaveProperty('static');
+  });
+});
+
+describe('widget registry', () => {
+  it('gives every widget type a title, a default size and the feature gate', async () => {
+    const { WIDGETS, WIDGET_TYPES } = await import('./registry');
+    expect(WIDGET_TYPES[0]).toBe('files');
+    for (const t of WIDGET_TYPES) {
+      expect(WIDGETS[t].title.length).toBeGreaterThan(0);
+      expect(WIDGETS[t].defaultSize.w).toBeGreaterThan(0);
+    }
+    expect(WIDGETS.versions).toHaveProperty('feature', 'git');
+    expect(WIDGETS.experiments).toHaveProperty('feature', 'masterLoop');
+    expect(WIDGETS.chat).not.toHaveProperty('feature');
   });
 });

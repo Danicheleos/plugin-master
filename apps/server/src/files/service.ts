@@ -1,4 +1,12 @@
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import {
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  stat,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import type { FileContent, FileNode } from '@pm/protocol';
 import { AppError } from '../lib/errors';
@@ -81,4 +89,16 @@ export async function write(
   );
   if (!isFile) throw notFound();
   await writeFile(abs, content);
+}
+
+/** Deletes one file (never a directory, never anything under `.git/`). */
+export async function remove(root: string, rel: string): Promise<void> {
+  const abs = resolveInSpace(root, rel);
+  if (relative(root, abs).split(sep).includes('.git'))
+    throw new AppError('PATH_FORBIDDEN', 'Cannot delete inside .git', 403);
+  const st = await lstat(abs).catch(() => undefined);
+  if (!st) throw notFound();
+  if (st.isDirectory())
+    throw new AppError('IS_DIRECTORY', 'Cannot delete a directory', 400);
+  await unlink(abs);
 }

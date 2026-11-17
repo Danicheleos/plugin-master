@@ -1,15 +1,31 @@
 .dashboard {
   height: 100%;
-  overflow: auto;
+  overflow-x: hidden; // a touch resize handle of a rightmost widget must not add a sideways scroll
+  overflow-y: auto;
   // expanding a widget can add a vertical scrollbar; without a reserved gutter the grid width
   // (and so every widget's x and width) would change by the scrollbar width
   scrollbar-gutter: stable;
+
+  // touch: a bigger resize target that sticks out to the RIGHT of the widget (20 of its 32 px), so it
+  // does not cover controls in the widget's bottom-right corner (the chat's Send/Stop) and adds no
+  // scroll at the bottom; the mark stays at the widget's corner
+  @media (pointer: coarse) {
+    :global(.react-grid-item > .react-resizable-handle) {
+      width: 32px;
+      height: 32px;
+      right: -20px;
+    }
+    :global(.react-grid-item > .react-resizable-handle::after) {
+      right: 23px;
+    }
+  }
 }
 
 .widget {
+  outline: none;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  // no overflow clipping here: the touch resize handle reaches outside the tile (the body clips)
   background: var(--mantine-color-body);
   border: 1px solid var(--mantine-color-default-border);
   border-radius: var(--mantine-radius-sm);
@@ -23,14 +39,42 @@
 .title {
   cursor: grab;
   user-select: none;
-
-  &[data-pinned] {
-    cursor: default;
-  }
 }
 
 .body {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  border-radius: 0 0 var(--mantine-radius-sm) var(--mantine-radius-sm);
+}
+
+.maxContent {
+  display: flex;
+  flex-direction: column;
+  height: 90vh;
+
+  @media (max-width: 48em) {
+    height: 100%;
+  }
+}
+
+.maxBody {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+// where a widget's own node sits (tile or dialog); the node scrolls, so its scroll moves with it
+.slot {
+  height: 100%;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+.host {
+  height: 100%;
   overflow: auto;
 }

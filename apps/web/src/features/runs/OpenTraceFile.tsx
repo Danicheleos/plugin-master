@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Modal, Select, Text } from '@mantine/core';
+import { Button, Modal, Select } from '@mantine/core';
 import {
   ProjectSessionSchema,
   TraceSchema,
@@ -8,8 +8,9 @@ import {
 } from '@pm/protocol';
 import { z } from 'zod';
 import { request } from '../../api/http';
-import { TraceDialog } from '../evals/TraceView';
-import { stamp } from '../evals/format';
+import { TraceDialog } from '../../shared/trace/TraceView';
+import { stamp } from '../../shared/format';
+import { QueryError } from '../../shared/ui/QueryError';
 
 const useAllSessions = (enabled: boolean) =>
   useQuery({
@@ -74,7 +75,7 @@ export function OpenTraceFile() {
         onClose={() => setPicking(false)}
         title="Open a Claude Code session"
       >
-        {error && <Text c="red">{error.message}</Text>}
+        {error && <QueryError error={error} />}
         <Select
           searchable
           openOnFocus={false}

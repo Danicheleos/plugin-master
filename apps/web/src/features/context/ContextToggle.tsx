@@ -11,7 +11,7 @@ export function ContextToggle({
   path: string;
 }) {
   const { data, error } = useSpaceConfig(spaceId);
-  const toggle = useToggleContext(spaceId);
+  const { toggle, error: toggleError } = useToggleContext(spaceId);
   if (error)
     return (
       <Tooltip label={error.message}>
@@ -24,11 +24,17 @@ export function ContextToggle({
   const pinned = data.masterContext.includes(path);
   return (
     <Tooltip
-      label={pinned ? 'Remove from master context' : 'Add to master context'}
+      label={
+        toggleError
+          ? `Could not save: ${toggleError.message}`
+          : pinned
+            ? 'Remove from master context'
+            : 'Add to master context'
+      }
     >
       <ActionIcon
         variant="subtle"
-        color="gray"
+        color={toggleError ? 'red' : 'gray'}
         size="sm"
         aria-label={pinned ? 'Unpin from context' : 'Pin to context'}
         className={pinned ? undefined : styles.unpinned}

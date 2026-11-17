@@ -3,7 +3,9 @@ import { describeTool, toolKind } from './describeTool';
 
 describe('describeTool', () => {
   it('picks the key argument per tool', () => {
-    expect(describeTool('Read', '{"file_path":"/a/b.md","limit":5}')).toBe('/a/b.md');
+    expect(describeTool('Read', '{"file_path":"/a/b.md","limit":5}')).toBe(
+      '/a/b.md',
+    );
     expect(describeTool('Bash', '{"command":"ls -la"}')).toBe('ls -la');
     expect(describeTool('Skill', '{"skill":"my-skill"}')).toBe('my-skill');
     expect(describeTool('Grep', '{"pattern":"foo","path":"x"}')).toBe('foo');
@@ -14,8 +16,8 @@ describe('describeTool', () => {
     expect(describeTool('Read', 'x'.repeat(300))).toHaveLength(121);
   });
   it('classifies tools', () => {
-    expect(['Skill', 'Glob', 'Edit', 'Bash', 'Agent', 'mcp__a'].map(toolKind)).toEqual([
-      'skill', 'read', 'edit', 'bash', 'agent', 'other',
-    ]);
+    expect(
+      ['Skill', 'Glob', 'Edit', 'Bash', 'Agent', 'mcp__a'].map(toolKind),
+    ).toEqual(['skill', 'read', 'edit', 'bash', 'agent', 'other']);
   });
 });

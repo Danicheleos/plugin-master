@@ -1,56 +1,105 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExperimentSchema, LedgerRecordSchema, type Experiment, type ExperimentDiff, type RunExperiment } from '@pm/protocol';
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import {
+  ExperimentDiffSchema,
+  ExperimentSchema,
+  LedgerRecordSchema,
+  type RunExperiment,
+} from '@pm/protocol';
 import { z } from 'zod';
 import { request } from '../../api/http';
-import { useSpaceEvents } from '../../api/ws';
+import { spaceUrl, useSpaceInvalidate } from '../../api/space';
 
-const expKey = (id: string) => ['experiments', id];
-const url = (id: string, p = '') => `/api/spaces/${id}/experiments${p}`;
+export const experimentsKey = (id: string) => ['experiments', id];
+const expUrl = (id: string, ...parts: (string | number)[]) =>
+  spaceUrl(id, 'experiments', ...parts);
 
-/** The list; `experiments.changed` and `git.changed` refetch every experiment query of the space. */
+export const experimentQueries = {
+  list: (spaceId: string) =>
+    queryOptions({
+      queryKey: [...experimentsKey(spaceId), 'list'],
+      queryFn: () =>
+        request('GET', expUrl(spaceId), undefined, z.array(ExperimentSchema)),
+    }),
+  one: (spaceId: string, n: number | null) =>
+    queryOptions({
+      queryKey: [...experimentsKey(spaceId), n],
+      enabled: n !== null,
+      queryFn: () =>
+        request('GET', expUrl(spaceId, n ?? ''), undefined, ExperimentSchema),
+    }),
+  diff: (spaceId: string, n: number) =>
+    queryOptions({
+      queryKey: [...experimentsKey(spaceId), n, 'diff'],
+      queryFn: () =>
+        request(
+          'GET',
+          expUrl(spaceId, n, 'diff'),
+          undefined,
+          ExperimentDiffSchema,
+        ),
+    }),
+  ledger: (spaceId: string) =>
+    queryOptions({
+      queryKey: [...experimentsKey(spaceId), 'ledger'],
+      queryFn: () =>
+        request(
+          'GET',
+          expUrl(spaceId, 'ledger'),
+          undefined,
+          z.array(LedgerRecordSchema),
+        ),
+    }),
+};
+
+/** `experiments.changed` and `git.changed` refetch every experiment query of the space. Mount once per widget. */
+export function useExperimentsRefresh(spaceId: string) {
+  useSpaceInvalidate(
+    spaceId,
+    (m) => m.type === 'experiments.changed' || m.type === 'git.changed',
+    [experimentsKey(spaceId)],
+  );
+}
+
+/** The list. NOTE: also mounts `useExperimentsRefresh` (the subscription for all experiment queries). */
 export function useExperiments(spaceId: string) {
-  const qc = useQueryClient();
-  useSpaceEvents(spaceId, (msg) => {
-    if (msg.type === 'experiments.changed' || msg.type === 'git.changed')
-      void qc.invalidateQueries({ queryKey: expKey(spaceId) });
-  });
-  return useQuery({
-    queryKey: [...expKey(spaceId), 'list'],
-    queryFn: () => request('GET', url(spaceId), undefined, z.array(ExperimentSchema)),
-  });
+  useExperimentsRefresh(spaceId);
+  return useQuery(experimentQueries.list(spaceId));
 }
 
 export const useExperiment = (spaceId: string, n: number | null) =>
-  useQuery({
-    queryKey: [...expKey(spaceId), n],
-    enabled: n !== null,
-    queryFn: () => request('GET', url(spaceId, `/${n}`), undefined, ExperimentSchema),
-  });
+  useQuery(experimentQueries.one(spaceId, n));
 
 export const useExperimentDiff = (spaceId: string, n: number) =>
-  useQuery({
-    queryKey: [...expKey(spaceId), n, 'diff'],
-    queryFn: () => request<ExperimentDiff>('GET', url(spaceId, `/${n}/diff`)),
-  });
+  useQuery(experimentQueries.diff(spaceId, n));
 
 export function useRunExperiment(spaceId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: RunExperiment) => request<Experiment>('POST', url(spaceId, '/run'), body),
-    onSettled: () => qc.invalidateQueries({ queryKey: expKey(spaceId) }),
+    mutationFn: (body: RunExperiment) =>
+      request('POST', expUrl(spaceId, 'run'), body, ExperimentSchema),
+    onSettled: () =>
+      qc.invalidateQueries({ queryKey: experimentsKey(spaceId) }),
   });
 }
 
-export function useExperimentAction(spaceId: string, n: number, action: 'cancel' | 'merge' | 'discard') {
+export function useExperimentAction(
+  spaceId: string,
+  n: number,
+  action: 'cancel' | 'merge' | 'discard',
+) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => request<Experiment>('POST', url(spaceId, `/${n}/${action}`)),
-    onSettled: () => qc.invalidateQueries({ queryKey: expKey(spaceId) }),
+    mutationFn: () =>
+      request('POST', expUrl(spaceId, n, action), undefined, ExperimentSchema),
+    onSettled: () =>
+      qc.invalidateQueries({ queryKey: experimentsKey(spaceId) }),
   });
 }
 
 export const useLedger = (spaceId: string) =>
-  useQuery({
-    queryKey: [...expKey(spaceId), 'ledger'],
-    queryFn: () => request('GET', url(spaceId, '/ledger'), undefined, z.array(LedgerRecordSchema)),
-  });
+  useQuery(experimentQueries.ledger(spaceId));

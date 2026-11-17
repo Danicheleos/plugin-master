@@ -2,7 +2,7 @@ import { FileContentSchema } from '@pm/protocol';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { Registry } from '../spaces/registry';
-import { create, read, tree, write } from './service';
+import { create, read, remove, tree, write } from './service';
 
 const QuerySchema = FileContentSchema.pick({ path: true });
 
@@ -32,6 +32,14 @@ export const filesRoutes =
     app.put<Req>('/spaces/:id/file', async (req, reply) => {
       const { path, content } = FileContentSchema.parse(req.body);
       await write(await rootOf(req.params.id), path, content);
+      return reply.code(204).send();
+    });
+
+    app.delete<Req>('/spaces/:id/file', async (req, reply) => {
+      await remove(
+        await rootOf(req.params.id),
+        QuerySchema.parse(req.query).path,
+      );
       return reply.code(204).send();
     });
   };

@@ -76,4 +76,38 @@ describe('files routes', () => {
     expect(res.statusCode).toBe(400);
     expect(res.json()).toMatchObject({ error: { code: 'PATH_OUTSIDE_SPACE' } });
   });
+
+  it('deletes a file via DELETE and refuses .git', async () => {
+    const url = `/api/spaces/${id}/file`;
+    await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: { path: 'a.md', content: 'a' },
+    });
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `${url}?path=a.md`,
+      headers,
+    });
+    expect(del.statusCode).toBe(204);
+    const again = await app.inject({
+      method: 'DELETE',
+      url: `${url}?path=a.md`,
+      headers,
+    });
+    expect(again.statusCode).toBe(404);
+    const git = await app.inject({
+      method: 'DELETE',
+      url: `${url}?path=.git/HEAD`,
+      headers,
+    });
+    expect(git.statusCode).toBe(403);
+    const out = await app.inject({
+      method: 'DELETE',
+      url: `${url}?path=../x`,
+      headers,
+    });
+    expect(out.statusCode).toBe(400);
+  });
 });

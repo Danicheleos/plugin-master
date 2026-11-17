@@ -1,4 +1,4 @@
-import { Anchor, Badge, Group, Text, Tooltip } from '@mantine/core';
+import { Badge, Group, Text, Tooltip } from '@mantine/core';
 import type {
   EvalBaselineSection,
   EvalCaseEntry,
@@ -7,14 +7,16 @@ import type {
 } from '@pm/protocol';
 import { ABLATION_BASELINE } from './EvalCompare';
 import { NoResults } from './EvalRunsList';
-import { DataTable } from './DataTable';
+import { EvalDataTable } from './EvalDataTable';
 import { ExportCasesButton } from './ExportCasesButton';
 import { MetricGrid } from './MetricGrid';
 import { runsColumns, suiteCaseColumns, type OpenCase } from './columns';
 import { useEvalSuites, useSetBaseline } from './hooks';
 import { useOpens } from './prefs';
-import { score, scoreColor, stamp } from './format';
+import { CollapsibleSection } from './CollapsibleSection';
+import { score, scoreColor, stamp } from '../../shared/format';
 import styles from './evals.module.scss';
+import { QueryError } from '../../shared/ui/QueryError';
 
 export type { OpenCase };
 
@@ -26,7 +28,7 @@ export function EvalSuitesList({
   onOpen: OpenCase;
 }) {
   const { data, error } = useEvalSuites(spaceId);
-  if (error) return <Text c="red">{error.message}</Text>;
+  if (error) return <QueryError error={error} />;
   if (!data) return null;
   if (!data.suites.length) return <NoResults dir={data.dir} />;
   return (
@@ -47,40 +49,35 @@ function Suite({
   suite: EvalSuiteEntry;
   onOpen: OpenCase;
 }) {
-  const { isOpen: is, toggle } = useOpens();
-  const key = `suite:${suite.key}`;
-  const open = is(key, true);
+  const openKey = `suite:${suite.key}`;
   return (
-    <section className={styles.suite}>
-      <Group gap="xs" mb="xs">
-        <Anchor
-          component="button"
-          aria-label="Toggle suite"
-          aria-expanded={open}
-          onClick={() => toggle(key, true)}
-        >
-          {open ? '▾' : '▸'}
-        </Anchor>
-        <Text fw={600}>{suite.label}</Text>
-        {suite.kind !== 'main' && <Badge variant="light">{suite.kind}</Badge>}
-        <Text size="xs" c="dimmed">
-          {suite.cases.length} cases · {suite.runCount} runs
-        </Text>
-        <ExportCasesButton
-          spaceId={spaceId}
-          cases={suite.cases.map((c) => c.name)}
-        />
-      </Group>
-      {open && (
-        <CasesTable
-          spaceId={spaceId}
-          cases={suite.cases}
-          openKey={key}
-          showHeader={suite.kind === 'main'}
-          onOpen={onOpen}
-        />
-      )}
-    </section>
+    <CollapsibleSection
+      openKey={openKey}
+      defaultOpen
+      anchor={(open) => (open ? '▾' : '▸')}
+      anchorProps={{ 'aria-label': 'Toggle suite' }}
+      header={
+        <>
+          <Text fw={600}>{suite.label}</Text>
+          {suite.kind !== 'main' && <Badge variant="light">{suite.kind}</Badge>}
+          <Text size="xs" c="dimmed">
+            {suite.cases.length} cases · {suite.runCount} runs
+          </Text>
+          <ExportCasesButton
+            spaceId={spaceId}
+            cases={suite.cases.map((c) => c.name)}
+          />
+        </>
+      }
+    >
+      <CasesTable
+        spaceId={spaceId}
+        cases={suite.cases}
+        openKey={openKey}
+        showHeader={suite.kind === 'main'}
+        onOpen={onOpen}
+      />
+    </CollapsibleSection>
   );
 }
 
@@ -104,7 +101,7 @@ export function CasesTable({
   const toggleCase = (c: EvalCaseEntry) => toggle(caseKey(c));
   const isOpen = (c: EvalCaseEntry) => is(caseKey(c));
   return (
-    <DataTable
+    <EvalDataTable
       kind="suiteCases"
       highlightOnHover
       columns={suiteCaseColumns({
@@ -217,7 +214,7 @@ export function RunsTable({
   const onPin = (r: EvalCaseRun) =>
     setBaseline.mutate({ case: caseName, runId: r.pinned ? null : r.runId });
   return (
-    <DataTable
+    <EvalDataTable
       kind="runs"
       fz="xs"
       columns={runsColumns({ caseName, compareWith, onOpen, onPin })}

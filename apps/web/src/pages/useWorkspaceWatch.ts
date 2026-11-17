@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { send, useSpaceEvents } from '../api/ws';
-import { evalsKey, useEvalRuns } from '../features/evals/hooks';
-import { configKey } from '../features/context/hooks';
-import { fileKey, treeKey } from '../features/files/hooks';
+import { evalResultKeys, useEvalRuns } from '../features/evals';
+import { configKey } from '../features/context';
+import { fileKey, treeKey } from '../features/files';
 
 /**
  * Keeps queries fresh on `fs.changed` and tells the server what to watch: the root, `paths`
- * (expanded dirs, open files) and, while an evals widget is shown, the eval dirs.
+ * (expanded dirs, open files; keep the array stable while its content is) and, while an evals
+ * widget is shown, the eval dirs.
  */
 export function useWorkspaceWatch(
   id: string,
@@ -27,7 +28,8 @@ export function useWorkspaceWatch(
   useSpaceEvents(id, (msg) => {
     if (msg.type !== 'fs.changed') return;
     if (resultsDir && msg.path.startsWith(`${resultsDir}/`)) {
-      void qc.invalidateQueries({ queryKey: evalsKey(id) });
+      for (const queryKey of evalResultKeys(id))
+        void qc.invalidateQueries({ queryKey });
       const depth = msg.path.slice(resultsDir.length + 1).split('/').length;
       if (msg.event === 'addDir' && depth <= 2)
         setFreshRuns((prev) => [...prev.slice(-9), msg.path]);
@@ -40,19 +42,18 @@ export function useWorkspaceWatch(
       void qc.invalidateQueries({ queryKey: fileKey(id, msg.path) });
   });
 
-  const watchKey = JSON.stringify([...new Set(paths)]);
   useEffect(() => {
     send({
       type: 'fs.watch',
       spaceId: id,
       paths: [
         '',
-        ...(JSON.parse(watchKey) as string[]),
+        ...paths,
         // the eval dir too: `results/` may not exist yet
         ...(evalDir && resultsDir && evalsShown
           ? [evalDir, resultsDir, ...freshRuns, ...(newest ? [newest] : [])]
           : []),
       ],
     });
-  }, [id, watchKey, evalDir, resultsDir, freshRuns, newest, evalsShown]);
+  }, [id, paths, evalDir, resultsDir, freshRuns, newest, evalsShown]);
 }

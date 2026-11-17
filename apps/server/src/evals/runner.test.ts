@@ -182,6 +182,7 @@ describe('eval runner', () => {
       evalRefs: {},
       disabledPlugins: [],
       autoMemory: true,
+      systemPrompt: 'preset',
       features: FeaturesSchema.parse({}),
     });
   });

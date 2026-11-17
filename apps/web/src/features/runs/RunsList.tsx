@@ -1,54 +1,22 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ActionIcon, Badge, Group, Table, Text, Tooltip } from '@mantine/core';
-import { useOnChatIdle, useOptionalChatContext } from '../chat/ChatContext';
-import { TraceDialog } from '../evals/TraceView';
-import { cost, seconds, stamp } from '../evals/format';
-import { runsKey, useLiveRefetch, useRunTrace, useRuns } from './hooks';
-
-function ago(iso: string) {
-  const s = (Date.now() - Date.parse(iso)) / 1000;
-  if (!Number.isFinite(s)) return '';
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
-}
-
-export function RunTraceModal({
-  spaceId,
-  runId,
-  title,
-  onClose,
-}: {
-  spaceId: string;
-  runId: string;
-  title: string;
-  onClose: () => void;
-}) {
-  const { data, error, refetch } = useRunTrace(spaceId, runId);
-  // live while the chat streams this session; same query key, so data (and the dialog's UI state) stays
-  const chat = useOptionalChatContext();
-  const live = chat?.sessionId === runId;
-  useLiveRefetch(() => void refetch(), {
-    tick: live ? chat.events.length : 0,
-    running: live && chat.status === 'running',
-  });
-  return (
-    <TraceDialog
-      byPrompt
-      title={`Run: ${title}`}
-      trace={data}
-      error={error}
-      onClose={onClose}
-    />
-  );
-}
+import { LiveRunTraceModal, useOnChatIdle } from '../chat';
+import {
+  ago,
+  cost,
+  elapsedMs,
+  seconds,
+  shortHash,
+  stamp,
+} from '../../shared/format';
+import { runsKey, useRuns } from './hooks';
+import { QueryError } from '../../shared/ui/QueryError';
 
 export function RunsList({ spaceId }: { spaceId: string }) {
   const { data, error } = useRuns(spaceId);
   const [open, setOpen] = useState<{ id: string; title: string } | null>(null);
-  if (error) return <Text c="red">{error.message}</Text>;
+  if (error) return <QueryError error={error} />;
   if (!data) return null;
   if (!data.runs.length)
     return (
@@ -98,10 +66,7 @@ export function RunsList({ spaceId }: { spaceId: string }) {
                 <Table.Td>
                   <Tooltip label={`ended ${stamp(r.endedAt)}`}>
                     <Text size="sm">
-                      {seconds(
-                        Date.parse(r.endedAt) - Date.parse(r.startedAt) ||
-                          undefined,
-                      )}
+                      {seconds(elapsedMs(r.startedAt, r.endedAt) || undefined)}
                     </Text>
                   </Tooltip>
                 </Table.Td>
@@ -109,7 +74,7 @@ export function RunsList({ spaceId }: { spaceId: string }) {
                 <Table.Td>{cost(r.costUsd)}</Table.Td>
                 <Table.Td>{r.models.join(', ')}</Table.Td>
                 <Table.Td>{r.claudeVersion}</Table.Td>
-                <Table.Td>{r.commit?.slice(0, 7)}</Table.Td>
+                <Table.Td>{shortHash(r.commit)}</Table.Td>
                 <Table.Td>
                   <Tooltip label={r.resumedFrom} disabled={!r.resumedFrom}>
                     <Text size="sm">{r.resumedFrom?.slice(0, 8)}</Text>
@@ -121,7 +86,7 @@ export function RunsList({ spaceId }: { spaceId: string }) {
         </Table.Tbody>
       </Table>
       {open && (
-        <RunTraceModal
+        <LiveRunTraceModal
           spaceId={spaceId}
           runId={open.id}
           title={open.title}

@@ -1,6 +1,6 @@
 import { Text } from '@mantine/core';
-import { DiffView } from '../git/DiffPane';
-import { FileDiffList } from '../git/FileDiffList';
+import { DiffView } from '../../shared/diff/DiffView';
+import { FileDiffList } from '../../shared/diff/FileDiffList';
 import { useExperimentDiff } from './hooks';
 
 /** Changed files of the branch against its base, with a read-only diff of the selected one. */

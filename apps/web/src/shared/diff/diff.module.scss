@@ -1,0 +1,21 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+  padding: 2px var(--mantine-spacing-xs);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--mantine-color-default-hover);
+  }
+}
+
+.active {
+  background: var(--mantine-primary-color-light);
+}
+
+.diff {
+  flex: 1;
+  min-height: 160px;
+  border-top: 1px solid var(--mantine-color-default-border);
+}

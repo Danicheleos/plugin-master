@@ -1,4 +1,5 @@
 export * from './lib/chat.js';
+export * from './lib/chat-window.js';
 export * from './lib/plans.js';
 export * from './lib/rest.js';
 export * from './lib/ws.js';

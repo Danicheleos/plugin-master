@@ -14,7 +14,7 @@ vi.mock('../../api/http', async (orig) => ({
 const renderList = (events: ChatEvent[]) =>
   render(
     <MantineProvider>
-      <MessageList events={events} />
+      <MessageList events={events} conversation={1} />
     </MantineProvider>,
   );
 
@@ -33,7 +33,7 @@ it('renders only the last MAX_ITEMS events with a note', () => {
     message: `msg-${i}`,
   }));
   renderList(events);
-  expect(screen.getByText('5 earlier messages hidden')).toBeTruthy();
+  expect(screen.getByText('5 earlier events hidden')).toBeTruthy();
   expect(screen.queryByText('msg-4')).toBeNull();
   expect(screen.getByText('msg-5')).toBeTruthy();
   expect(screen.getByText(`msg-${MAX_ITEMS + 4}`)).toBeTruthy();
@@ -67,6 +67,7 @@ it('renders a call with its result as the shared trace tool row, Agent calls lin
     <QueryClientProvider client={new QueryClient()}>
       <MantineProvider>
         <MessageList
+          conversation={1}
           spaceId="s"
           sessionId="sess-1"
           events={[
@@ -130,64 +131,93 @@ it('does not split a tool group at the MAX_ITEMS cut', () => {
     message: `msg-${i}`,
   }));
   renderList([{ kind: 'text', text: 'first' }, ...tools, ...rest]);
-  expect(screen.getByText('1 earlier message hidden')).toBeTruthy();
+  expect(screen.getByText('1 earlier event hidden')).toBeTruthy();
   expect(screen.queryByText('first')).toBeNull();
   expect(screen.getByText(/ 2 tool calls: Read ×2$/)).toBeTruthy();
 });
 
-it('never scrolls by itself when events are appended', () => {
-  const commit = (n: number): ChatEvent => ({
-    kind: 'commit',
-    hash: `abcdef${n}`,
-    files: n,
-    message: 'm',
-  });
-  const view = (events: ChatEvent[]) => (
-    <MantineProvider>
-      <MessageList events={events} />
-    </MantineProvider>
-  );
-  const { container, rerender } = render(view([commit(1)]));
-  const list = (
-    container as unknown as { firstElementChild: { scrollTop: number } }
-  ).firstElementChild;
-  list.scrollTop = 40;
-  rerender(view([commit(1), commit(2)]));
-  expect(list.scrollTop).toBe(40);
-});
-
-type Scrollable = { scrollTop: number; scrollHeight: number };
+type Scrollable = {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+};
 const proto = () =>
   (globalThis as unknown as { HTMLElement: { prototype: object } }).HTMLElement
     .prototype;
-const stubHeight = (h: number) =>
-  Object.defineProperty(proto(), 'scrollHeight', {
-    configurable: true,
-    get: () => h,
-  });
-
-it('scrolls to the bottom on init and conversation change, not on append', () => {
-  stubHeight(500);
-  const ui = (events: ChatEvent[]) => (
-    <MantineProvider>
-      <MessageList events={events} />
-    </MantineProvider>
-  );
-  const a: ChatEvent = { kind: 'text', text: 'one' };
-  const { container, rerender } = render(ui([a]));
-  const el = (
-    container as unknown as { querySelector(s: string): unknown }
-  ).querySelector('div[class*="list"]') as Scrollable;
-  expect(el.scrollTop).toBe(500);
-
-  el.scrollTop = 40;
-  stubHeight(900);
-  rerender(ui([a, { kind: 'text', text: 'two' }]));
-  expect(el.scrollTop).toBe(40);
-
-  rerender(ui([{ kind: 'text', text: 'other' }]));
-  expect(el.scrollTop).toBe(900);
+const stub = (name: 'scrollHeight' | 'clientHeight', v: number) =>
+  Object.defineProperty(proto(), name, { configurable: true, get: () => v });
+const unstub = () => {
   delete (proto() as Record<string, unknown>).scrollHeight;
+  delete (proto() as Record<string, unknown>).clientHeight;
+};
+
+const commit = (n: number): ChatEvent => ({
+  kind: 'commit',
+  hash: `abcdef${n}`,
+  files: n,
+  message: 'm',
+});
+const view = (events: ChatEvent[], conversation = 1) => (
+  <MantineProvider>
+    <MessageList events={events} conversation={conversation} />
+  </MantineProvider>
+);
+const listOf = (container: unknown) =>
+  (container as { querySelector(s: string): unknown }).querySelector(
+    'div[class*="list"]',
+  ) as Scrollable;
+const scrolled = (el: Scrollable, top: number) => {
+  el.scrollTop = top;
+  fireEvent.scroll(el as unknown as Element);
+};
+
+it('does not move when events are appended while the reader scrolled up', () => {
+  stub('scrollHeight', 1000);
+  stub('clientHeight', 300);
+  const { container, rerender } = render(view([commit(1)]));
+  const el = listOf(container);
+  expect(el.scrollTop).toBe(1000); // mount jumps to the end
+  scrolled(el, 40); // reading old messages
+  stub('scrollHeight', 1200);
+  rerender(view([commit(1), commit(2)]));
+  expect(el.scrollTop).toBe(40);
+  unstub();
+});
+
+it('follows appended events while at the bottom (within 24px)', () => {
+  stub('scrollHeight', 1000);
+  stub('clientHeight', 300);
+  const { container, rerender } = render(view([commit(1)]));
+  const el = listOf(container);
+  scrolled(el, 700); // exactly the bottom
+  stub('scrollHeight', 1100);
+  rerender(view([commit(1), commit(2)]));
+  expect(el.scrollTop).toBe(1100);
+  scrolled(el, 1100 - 300 - 24); // 24px above: still following
+  stub('scrollHeight', 1200);
+  rerender(view([commit(1), commit(2), commit(3)]));
+  expect(el.scrollTop).toBe(1200);
+  scrolled(el, 1200 - 300 - 25); // 25px above: not following
+  stub('scrollHeight', 1300);
+  rerender(view([commit(1), commit(2), commit(3), commit(4)]));
+  expect(el.scrollTop).toBe(1200 - 300 - 25);
+  unstub();
+});
+
+it('jumps to the end when the conversation changes, even after scrolling up', () => {
+  stub('scrollHeight', 500);
+  stub('clientHeight', 100);
+  const a: ChatEvent = { kind: 'text', text: 'one' };
+  const { container, rerender } = render(view([a]));
+  const el = listOf(container);
+  expect(el.scrollTop).toBe(500);
+  scrolled(el, 40);
+  stub('scrollHeight', 900);
+  rerender(view([a, { kind: 'text', text: 'two' }]));
+  expect(el.scrollTop).toBe(40);
+  rerender(view([{ kind: 'text', text: 'other' }], 2));
+  expect(el.scrollTop).toBe(900);
+  unstub();
 });
 
 it('nests a subagent tool calls under its Agent call, collapsed until opened; old events without a parent stay flat', () => {
@@ -315,7 +345,7 @@ it('collapses the previous last chunk when a live subagent grows past a chunk bo
   ];
   const view = (n: number) => (
     <MantineProvider>
-      <MessageList events={events(n)} />
+      <MessageList events={events(n)} conversation={1} />
     </MantineProvider>
   );
   const { rerender } = render(view(CHUNK_CALLS * 2));

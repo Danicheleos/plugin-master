@@ -4,13 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { EvalProgress, ExternalSeries } from '@pm/protocol';
 import { EvalProgressView } from './EvalProgressView';
 import { evalsKey } from './hooks';
-
-const clock = (ms: number) => {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(s / 3600);
-  const m = String(Math.floor((s % 3600) / 60)).padStart(h ? 2 : 1, '0');
-  return `${h ? `${h}:` : ''}${m}:${String(s % 60).padStart(2, '0')}`;
-};
+import { clock, cost } from '../../shared/format';
 
 const toProgress = (s: ExternalSeries): EvalProgress => ({
   total: s.total,
@@ -24,7 +18,13 @@ const toProgress = (s: ExternalSeries): EvalProgress => ({
 });
 
 /** A series started outside plugin-master, from `results/running.json`; refreshes the runs list when it finishes. */
-export function ExternalSeriesView({ spaceId, series }: { spaceId: string; series: ExternalSeries }) {
+export function ExternalSeriesView({
+  spaceId,
+  series,
+}: {
+  spaceId: string;
+  series: ExternalSeries;
+}) {
   const qc = useQueryClient();
   const finished = series.finishedAt !== null;
   const [now, setNow] = useState(Date.now());
@@ -40,9 +40,12 @@ export function ExternalSeriesView({ spaceId, series }: { spaceId: string; serie
   return (
     <Stack gap={4}>
       <Group gap="xs">
-        <Badge color={finished ? 'green' : 'blue'}>{finished ? 'finished (external)' : 'running (external)'}</Badge>
+        <Badge color={finished ? 'green' : 'blue'}>
+          {finished ? 'finished (external)' : 'running (external)'}
+        </Badge>
         <Text size="xs" c="dimmed">
-          {series.series} · {series.arm} · {series.runsPerCase} runs per case · ${series.costUsd.toFixed(2)} so far ·{' '}
+          {series.series} · {series.arm} · {series.runsPerCase} runs per case ·{' '}
+          {cost(series.costUsd)} so far ·{' '}
           {clock(end - Date.parse(series.startedAt))}
         </Text>
       </Group>

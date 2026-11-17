@@ -1,10 +1,17 @@
 import { z } from 'zod';
-import { useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import {
+  EvalBaselinePinSchema,
   EvalGroupResponseSchema,
   EvalRunResponseSchema,
   EvalRunsResponseSchema,
+  EvalTrustSchema,
   TraceSchema,
   EvalSuiteSchema,
   EvalSuitesResponseSchema,
@@ -15,8 +22,10 @@ import {
   type EvalRunResponse,
   type EvalStatus,
 } from '@pm/protocol';
+import { IGNORED, request, requestText } from '../../api/http';
+import { idParts, query, spaceUrl } from '../../api/space';
 import { useSpaceEvents } from '../../api/ws';
-import { request, requestText } from '../../api/http';
+import { configKey } from '../context';
 
 export const evalsKey = (spaceId: string) => ['evals', spaceId];
 const runKey = (spaceId: string, runId: string) => [
@@ -24,79 +33,163 @@ const runKey = (spaceId: string, runId: string) => [
   'run',
   runId,
 ];
+export const evalRunsKey = (spaceId: string) => [...evalsKey(spaceId), 'runs'];
+export const evalSuitesKey = (spaceId: string) => [
+  ...evalsKey(spaceId),
+  'suites',
+];
+export const evalTargetsKey = (spaceId: string) => [
+  ...evalsKey(spaceId),
+  'targets',
+];
 
-// run ids can be nested (`plugin-eval/x`): encode each segment, keep the slashes
-const idPath = (runId: string) =>
-  runId.split('/').map(encodeURIComponent).join('/');
+/** Everything that derives from the result files: runs list, suites, targets and every run view (not the suite definition). */
+export const evalResultKeys = (spaceId: string) => [
+  evalRunsKey(spaceId),
+  evalSuitesKey(spaceId),
+  evalTargetsKey(spaceId),
+  [...evalsKey(spaceId), 'run'],
+];
+
+const evalUrl = (spaceId: string, ...parts: string[]) =>
+  spaceUrl(spaceId, 'evals', ...parts);
 
 const EXTERNAL_POLL_MS = 5000;
-export const evalRunsKey = (spaceId: string) => [...evalsKey(spaceId), 'runs'];
-export const fetchEvalRuns = (spaceId: string) =>
-  request('GET', `/api/spaces/${spaceId}/evals/runs`, undefined, EvalRunsResponseSchema);
+const ExportResponseSchema = z.object({
+  exports: z.array(
+    z.object({
+      case: z.string(),
+      dir: z.string(),
+      written: z.number(),
+      skipped: z.number(),
+      total: z.number(),
+    }),
+  ),
+});
+
+export type TraceTarget = {
+  runId: string;
+  case: string;
+  arm: 'with' | 'without';
+  n: number;
+};
+
+export const evalQueries = {
+  runs: (spaceId: string) =>
+    queryOptions({
+      queryKey: evalRunsKey(spaceId),
+      queryFn: () =>
+        request(
+          'GET',
+          evalUrl(spaceId, 'runs'),
+          undefined,
+          EvalRunsResponseSchema,
+        ),
+    }),
+  suites: (spaceId: string) =>
+    queryOptions({
+      queryKey: evalSuitesKey(spaceId),
+      queryFn: () =>
+        request(
+          'GET',
+          evalUrl(spaceId, 'suites'),
+          undefined,
+          EvalSuitesResponseSchema,
+        ),
+    }),
+  targets: (spaceId: string) =>
+    queryOptions({
+      queryKey: evalTargetsKey(spaceId),
+      queryFn: () =>
+        request(
+          'GET',
+          evalUrl(spaceId, 'targets'),
+          undefined,
+          EvalTargetsResponseSchema,
+        ),
+    }),
+  suite: (spaceId: string) =>
+    queryOptions({
+      queryKey: [...evalsKey(spaceId), 'suite'],
+      queryFn: () =>
+        request('GET', evalUrl(spaceId, 'suite'), undefined, EvalSuiteSchema),
+    }),
+  /** One run, or with `group` the merged view of the group whose first run is `runId`. */
+  run: (spaceId: string, runId: string, group = false) =>
+    queryOptions({
+      queryKey: group
+        ? [...runKey(spaceId, runId), 'group']
+        : runKey(spaceId, runId),
+      queryFn: (): Promise<EvalRunResponse & { group?: EvalGroup }> =>
+        request(
+          'GET',
+          evalUrl(spaceId, group ? 'groups' : 'runs', ...idParts(runId)),
+          undefined,
+          group ? EvalGroupResponseSchema : EvalRunResponseSchema,
+        ),
+    }),
+  /** The report is fetched with the token and shown via `srcdoc`: a plain iframe `src` carries no auth header. */
+  report: (spaceId: string, runId: string) =>
+    queryOptions({
+      queryKey: [...runKey(spaceId, runId), 'report'],
+      queryFn: () => requestText(evalUrl(spaceId, 'report', ...idParts(runId))),
+    }),
+  /** Parsed trace of one arm run (server `GET …/evals/runs/<id>/trace`). */
+  trace: (spaceId: string, t: TraceTarget) =>
+    queryOptions({
+      queryKey: [...runKey(spaceId, t.runId), 'trace', t.case, t.arm, t.n],
+      queryFn: () =>
+        request(
+          'GET',
+          evalUrl(spaceId, 'runs', ...idParts(t.runId), 'trace') +
+            query({ case: t.case, arm: t.arm, n: t.n }),
+          undefined,
+          TraceSchema,
+        ),
+    }),
+};
 
 /** `enabled` false: the workspace only needs the eval dir while the Evals tab is open. */
 export const useEvalRuns = (spaceId: string, enabled = true) =>
   useQuery({
+    ...evalQueries.runs(spaceId),
     enabled,
-    queryKey: evalRunsKey(spaceId),
-    queryFn: () => fetchEvalRuns(spaceId),
     // an external series has no WS event of its own: poll while one is live
     refetchInterval: (q) => (q.state.data?.external ? EXTERNAL_POLL_MS : false),
   });
 
 export const useEvalSuites = (spaceId: string) =>
-  useQuery({
-    queryKey: [...evalsKey(spaceId), 'suites'],
-    queryFn: () =>
-      request('GET', `/api/spaces/${spaceId}/evals/suites`, undefined, EvalSuitesResponseSchema),
-  });
-
+  useQuery(evalQueries.suites(spaceId));
 export const useEvalTargets = (spaceId: string) =>
-  useQuery({
-    queryKey: [...evalsKey(spaceId), 'targets'],
-    queryFn: () =>
-      request('GET', `/api/spaces/${spaceId}/evals/targets`, undefined, EvalTargetsResponseSchema),
-  });
-
+  useQuery(evalQueries.targets(spaceId));
 export const useEvalSuite = (spaceId: string) =>
-  useQuery({
-    queryKey: [...evalsKey(spaceId), 'suite'],
-    queryFn: () =>
-      request('GET', `/api/spaces/${spaceId}/evals/suite`, undefined, EvalSuiteSchema),
-  });
+  useQuery(evalQueries.suite(spaceId));
 
-/** One run, or with `group` the merged view of the group whose first run is `runId`. */
-export const useEvalRun = (spaceId: string, runId: string, group = false, enabled = true) =>
-  useQuery({
-    enabled,
-    queryKey: group ? [...runKey(spaceId, runId), 'group'] : runKey(spaceId, runId),
-    queryFn: (): Promise<EvalRunResponse & { group?: EvalGroup }> =>
-      request(
-        'GET',
-        `/api/spaces/${spaceId}/evals/${group ? 'groups' : 'runs'}/${idPath(runId)}`,
-        undefined,
-        group ? EvalGroupResponseSchema : EvalRunResponseSchema,
-      ),
-  });
+export const useEvalRun = (
+  spaceId: string,
+  runId: string,
+  group = false,
+  enabled = true,
+) => useQuery({ ...evalQueries.run(spaceId, runId, group), enabled });
 
-/** The report is fetched with the token and shown via `srcdoc`: a plain iframe `src` carries no auth header. */
 export const useEvalReport = (spaceId: string, runId: string) =>
-  useQuery({
-    queryKey: [...runKey(spaceId, runId), 'report'],
-    queryFn: () =>
-      requestText(`/api/spaces/${spaceId}/evals/report/${idPath(runId)}`),
-  });
+  useQuery(evalQueries.report(spaceId, runId));
+
+export const useEvalTrace = (spaceId: string, t: TraceTarget) =>
+  useQuery(evalQueries.trace(spaceId, t));
 
 const MAX_LINES = 500;
 const idle: EvalStatus = { state: 'idle' };
 
-/** Live state of the eval process of a space (WS `eval.*`); `onDone` gets the id of a finished run. */
+/**
+ * Live state of the eval process of a space (WS `eval.*`); `onDone` gets the id of a finished run.
+ * NOTE: when a run ends it also invalidates the queries that derive from results (not the suite definition),
+ * and only the finished run's views.
+ */
 export function useEvalLive(spaceId: string, onDone: (runId: string) => void) {
   const [status, setStatus] = useState<EvalStatus>(idle);
   const [lines, setLines] = useState<EvalLine[]>([]);
   const qc = useQueryClient();
-  const done = useRef(onDone);
-  done.current = onDone;
   useSpaceEvents(spaceId, (msg) => {
     if (msg.type === 'eval.history') {
       setLines(msg.lines);
@@ -107,48 +200,49 @@ export function useEvalLive(spaceId: string, onDone: (runId: string) => void) {
       if (msg.state === 'running') setLines([]);
       setStatus(msg);
       if (msg.state !== 'running') {
-        void qc.invalidateQueries({ queryKey: evalsKey(spaceId) });
-        if (msg.state === 'done' && msg.runId) done.current(msg.runId);
+        // the finished run's views are new; other runs' views are unchanged
+        for (const queryKey of [
+          evalRunsKey(spaceId),
+          evalSuitesKey(spaceId),
+          evalTargetsKey(spaceId),
+        ])
+          void qc.invalidateQueries({ queryKey });
+        if (msg.runId)
+          void qc.invalidateQueries({ queryKey: runKey(spaceId, msg.runId) });
+        if (msg.state === 'done' && msg.runId) onDone(msg.runId);
       }
     }
   });
   return { status, lines };
 }
 
-const evalUrl = (spaceId: string, tail: string) =>
-  `/api/spaces/${spaceId}/evals/${tail}`;
-
+/** The new status arrives over WS (`eval.status`); the answer is not used. */
 export const startEval = (spaceId: string, req: EvalRunRequest) =>
-  request('POST', evalUrl(spaceId, 'run'), req);
+  request('POST', evalUrl(spaceId, 'run'), req, IGNORED).then(() => undefined);
 export const cancelEval = (spaceId: string) =>
-  request('POST', evalUrl(spaceId, 'cancel'));
+  request<void>('POST', evalUrl(spaceId, 'cancel'));
 export const trustEval = (spaceId: string) =>
-  request('PUT', evalUrl(spaceId, 'trust'), { trusted: true });
+  request('PUT', evalUrl(spaceId, 'trust'), { trusted: true }, EvalTrustSchema);
 
-/** Pins `runId` as the baseline of `caseName`; null unpins. */
+/**
+ * Pins `runId` as the baseline of `caseName`; null unpins. The pin shows in the suites and targets
+ * lists and in the space config (`evalBaselines`); runs and run views do not change.
+ */
 export function useSetBaseline(spaceId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { case: string; runId: string | null }) =>
-      request('PUT', evalUrl(spaceId, 'baseline'), v),
-    onSuccess: () => qc.invalidateQueries({ queryKey: evalsKey(spaceId) }),
-  });
-}
-
-export type TraceTarget = { runId: string; case: string; arm: 'with' | 'without'; n: number };
-
-/** Parsed trace of one arm run (server `GET …/evals/runs/<id>/trace`). */
-export const useEvalTrace = (spaceId: string, t: TraceTarget) =>
-  useQuery({
-    queryKey: [...runKey(spaceId, t.runId), 'trace', t.case, t.arm, t.n],
-    queryFn: () =>
-      request(
-        'GET',
-        `/api/spaces/${spaceId}/evals/runs/${idPath(t.runId)}/trace?case=${encodeURIComponent(t.case)}&arm=${t.arm}&n=${t.n}`,
-        undefined,
-        TraceSchema,
+      request('PUT', evalUrl(spaceId, 'baseline'), v, EvalBaselinePinSchema),
+    onSettled: () =>
+      Promise.all(
+        [
+          evalSuitesKey(spaceId),
+          evalTargetsKey(spaceId),
+          configKey(spaceId),
+        ].map((queryKey) => qc.invalidateQueries({ queryKey })),
       ),
   });
+}
 
 /** Saves the whole history of each case (all runs, metrics and traces) to `.plugin-master/exports/evals/<case>/`; repeats write only changes. */
 export const useExportCases = (spaceId: string) =>
@@ -156,12 +250,8 @@ export const useExportCases = (spaceId: string) =>
     mutationFn: (cases: string[]) =>
       request(
         'POST',
-        `/api/spaces/${spaceId}/evals/export`,
+        evalUrl(spaceId, 'export'),
         { cases },
-        z.object({
-          exports: z.array(
-            z.object({ case: z.string(), dir: z.string(), written: z.number(), skipped: z.number(), total: z.number() }),
-          ),
-        }),
+        ExportResponseSchema,
       ),
   });

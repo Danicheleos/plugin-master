@@ -1,29 +1,46 @@
-import { memo, useState, type KeyboardEvent } from 'react';
-import { Button, Group, Select, Stack, Textarea } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
-import type { ChatModel } from '@pm/protocol';
-import { ContextSummary } from '../context/ContextSummary';
+import { memo, useCallback, useState, type KeyboardEvent } from 'react';
+import {
+  ActionIcon,
+  Button,
+  Collapse,
+  Group,
+  Stack,
+  Textarea,
+} from '@mantine/core';
+import { useElementSize, useMediaQuery } from '@mantine/hooks';
+import { CHAT_MODELS } from '@pm/protocol';
+import { ContextSummary } from '../context';
 import { MessageList } from './MessageList';
+import { EffortSelect, effortLabel } from './EffortSelect';
 import { ModelSelect } from './ModelSelect';
-import { ModeSelect } from './ModeSelect';
-import { useChatContext } from './ChatContext';
-import { useSessions } from './hooks';
+import { MODE_LABELS, ModeSelect } from './ModeSelect';
+import {
+  useChatActions,
+  useChatLog,
+  useChatSettings,
+  useChatStatus,
+} from './ChatContext';
+import { RunningAgents } from './RunningAgents';
+import { SessionSelect } from './SessionSelect';
 import styles from './chat.module.scss';
+import { usePersistentFlag } from '../../shared/storage';
+
+const OPEN_KEY = 'pm.chat.controlsOpen';
 
 /** Owns the draft text, so typing re-renders only this input, not the message list; memo + stable callbacks keep chat events from re-rendering it. */
 const ChatInput = memo(function ChatInput({
-  running,
-  onSend,
-  onStop,
-  model,
-  onModel,
+  expanded,
+  onExpanded,
+  maxHeight,
 }: {
-  running: boolean;
-  model: ChatModel | null;
-  onModel: (m: ChatModel) => void;
-  onSend: (text: string) => void;
-  onStop: () => void;
+  /** the textarea fills the panel; collapses after sending */
+  expanded: boolean;
+  onExpanded: (v: boolean) => void;
+  /** autosize cap in px (half the panel); then the textarea scrolls */
+  maxHeight: number;
 }) {
+  const running = useChatStatus() === 'running';
+  const { send: onSend, interrupt: onStop } = useChatActions();
   const [text, setText] = useState('');
   const touch = useMediaQuery('(pointer: coarse)'); // phones and tablets: Enter is a new line, Send button submits
 
@@ -31,6 +48,7 @@ const ChatInput = memo(function ChatInput({
     if (!text.trim() || running) return;
     onSend(text);
     setText('');
+    onExpanded(false);
   };
   const onKeyDown = (e: KeyboardEvent) => {
     if (
@@ -45,11 +63,23 @@ const ChatInput = memo(function ChatInput({
   };
 
   return (
-    <Group className={styles.input} wrap="nowrap" align="flex-end">
+    <Group
+      className={styles.input}
+      wrap="nowrap"
+      align={expanded ? 'stretch' : 'flex-end'}
+    >
       <Textarea
         flex={1}
+        autosize={!expanded}
+        minRows={2}
+        styles={{
+          root: expanded ? { height: '100%' } : undefined,
+          wrapper: expanded ? { height: '100%' } : undefined,
+          input: expanded
+            ? { height: '100%' }
+            : { maxHeight: maxHeight || undefined, overflowY: 'auto' },
+        }}
         value={text}
-        rows={3}
         placeholder={
           touch
             ? 'Message'
@@ -58,8 +88,16 @@ const ChatInput = memo(function ChatInput({
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
       />
-      <Stack gap="xs">
-        <ModelSelect model={model} onChange={onModel} />
+      <Stack gap="xs" justify="flex-end">
+        <ActionIcon
+          variant="default"
+          size="lg"
+          aria-label={expanded ? 'Collapse input' : 'Expand input'}
+          aria-pressed={expanded}
+          onClick={() => onExpanded(!expanded)}
+        >
+          {expanded ? '⤡' : '⤢'}
+        </ActionIcon>
         {running ? (
           <Button variant="default" onClick={onStop}>
             Stop
@@ -74,48 +112,73 @@ const ChatInput = memo(function ChatInput({
   );
 });
 
+/** The windowed events; the only part that re-renders per `chat.event`. */
+function ChatLog({ spaceId }: { spaceId: string }) {
+  const { events, earlier, conversation } = useChatLog();
+  const { sessionId } = useChatSettings();
+  return (
+    <MessageList
+      events={events}
+      earlier={earlier}
+      conversation={conversation}
+      spaceId={spaceId}
+      sessionId={sessionId}
+    />
+  );
+}
+
 export function ChatPanel({ spaceId }: { spaceId: string }) {
-  const chat = useChatContext();
-  const sessions = useSessions(spaceId, chat.sessionId, chat.status);
+  const chat = useChatSettings();
+  const { reset, setMode, setModel, setEffort } = useChatActions();
+  const [open, setOpen] = usePersistentFlag(OPEN_KEY);
+  const [expanded, setExpanded] = useState(false);
+  const { ref, height } = useElementSize<HTMLDivElement>();
+  const toggle = useCallback(() => setOpen(!open), [open, setOpen]);
+  const summary = [
+    chat.model ? CHAT_MODELS[chat.model] : '…',
+    MODE_LABELS[chat.mode],
+    effortLabel(chat.effort),
+  ].join(' · ');
 
   return (
-    <div className={styles.panel}>
-      <Group className={styles.header} justify="space-between">
-        <Select
-          size="xs"
-          flex={1}
-          aria-label="Session"
-          placeholder="New session"
-          allowDeselect={false}
-          data={(sessions.data ?? []).map((s) => ({
-            value: s.id,
-            label: s.title,
-          }))}
-          value={chat.sessionId}
-          onChange={(id) => id && id !== chat.sessionId && chat.resume(id)}
-        />
-        <ModeSelect mode={chat.mode} onChange={chat.setMode} />
-        <Button variant="default" size="compact-sm" onClick={chat.reset}>
-          New session
+    <div
+      ref={ref}
+      className={`${styles.panel} ${expanded ? styles.panelExpanded : ''}`}
+    >
+      <div className={styles.sessionToggle}>
+        <Button
+          variant="subtle"
+          color="gray"
+          size="compact-sm"
+          aria-expanded={open}
+          onClick={toggle}
+        >
+          Session {open ? '▾' : '▸'} · {summary}
         </Button>
-      </Group>
-      <ContextSummary
-        spaceId={spaceId}
-        contextFiles={chat.contextFiles}
-        missingContext={chat.missingContext}
-        onNewSession={chat.reset}
-      />
-      <MessageList
-        events={chat.events}
-        spaceId={spaceId}
-        sessionId={chat.sessionId}
-      />
+      </div>
+      <Collapse expanded={open}>
+        <Group className={styles.controls} gap="xs">
+          <SessionSelect spaceId={spaceId} />
+          <Button variant="default" size="compact-sm" onClick={reset}>
+            New session
+          </Button>
+          <ModeSelect mode={chat.mode} onChange={setMode} />
+          <ModelSelect model={chat.model} onChange={setModel} />
+          <EffortSelect effort={chat.effort} onChange={setEffort} />
+          <ContextSummary
+            spaceId={spaceId}
+            contextFiles={chat.contextFiles}
+            missingContext={chat.missingContext}
+            onNewSession={reset}
+          />
+        </Group>
+      </Collapse>
+      <ChatLog spaceId={spaceId} />
+      <RunningAgents spaceId={spaceId} />
       <ChatInput
-        running={chat.status === 'running'}
-        onSend={chat.send}
-        onStop={chat.interrupt}
-        model={chat.model}
-        onModel={chat.setModel}
+        expanded={expanded}
+        onExpanded={setExpanded}
+        maxHeight={Math.round(height / 2)}
       />
     </div>
   );

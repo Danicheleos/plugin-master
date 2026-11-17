@@ -1,20 +1,16 @@
 import { useState } from 'react';
 import { Alert, Badge, Group, Stack, Tabs, Text } from '@mantine/core';
-import type { CaseSide, GateStatus, VersionsGate } from '@pm/protocol';
-import { caseCompareColumns } from '../evals/columns';
-import { DataTable } from '../evals/DataTable';
-import { SuiteVerdict } from '../evals/SuiteVerdict';
-import { TraceModal } from '../evals/TraceView';
-import type { TraceTarget } from '../evals/hooks';
-import { DiffView } from '../git/DiffPane';
-import { FileDiffList } from '../git/FileDiffList';
+import type { CaseSide, VersionsGate } from '@pm/protocol';
+import { caseCompareColumns } from '../evals';
+import { EvalDataTable } from '../evals';
+import { SuiteVerdict } from '../evals';
+import { TraceModal } from '../evals';
+import type { TraceTarget } from '../evals';
+import { DiffView } from '../../shared/diff/DiffView';
+import { FileDiffList } from '../../shared/diff/FileDiffList';
 import { useVersionsCompare, useVersionsDiff, useVersionsGate } from './hooks';
-
-const COLOR: Record<GateStatus, string> = {
-  pass: 'green',
-  fail: 'red',
-  unknown: 'gray',
-};
+import { shortHash } from '../../shared/format';
+import { GATE_STATUS_COLOR } from '../../shared/ui/status';
 
 /** Compare pane of two commits: changed files with their commit-to-commit diff, cases, gate. */
 export function Compare({
@@ -46,11 +42,11 @@ export function Compare({
     <>
       <Group gap="xs" mb="xs">
         <Text size="sm" ff="monospace">
-          {from.slice(0, 7)} → {to.slice(0, 7)}
+          {shortHash(from)} → {shortHash(to)}
         </Text>
         {gate.data && (
           <Badge
-            color={COLOR[gate.data.status]}
+            color={GATE_STATUS_COLOR[gate.data.status]}
             aria-label="gate status"
           >{`gate: ${gate.data.status}`}</Badge>
         )}
@@ -73,7 +69,7 @@ export function Compare({
         </Tabs.Panel>
         <Tabs.Panel value="cases" pt="xs">
           {data.cases.length ? (
-            <DataTable
+            <EvalDataTable
               kind="compare-versions"
               columns={columns}
               rows={data.cases}
@@ -119,7 +115,7 @@ function VersionsDiff({
       </Text>
     );
   return data ? (
-    <DiffView data={data} label={[from.slice(0, 7), to.slice(0, 7)]} />
+    <DiffView data={data} label={[shortHash(from), shortHash(to)]} />
   ) : null;
 }
 
@@ -135,7 +131,7 @@ function Gate({ gate, error }: { gate?: VersionsGate; error: Error | null }) {
     <Stack gap="xs">
       {gate.rules.map((r) => (
         <Group key={r.id} gap="xs" align="flex-start" wrap="nowrap">
-          <Badge color={COLOR[r.status]} w={70}>
+          <Badge color={GATE_STATUS_COLOR[r.status]} w={70}>
             {r.status}
           </Badge>
           <div>

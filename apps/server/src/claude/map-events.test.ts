@@ -6,6 +6,7 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk';
 import { describe, expect, it } from 'vitest';
 import {
+  clipInput,
   describeToolUse,
   mapSdkBlocks,
   mapSdkMessage,
@@ -67,7 +68,7 @@ describe('mapSdkMessage', () => {
       toolUseId: 't1',
       isError: true,
     });
-    expect((e as { preview: string }).preview).toHaveLength(500);
+    expect((e as { preview: string }).preview).toHaveLength(200);
   });
 
   it('maps result with cost and duration', () => {
@@ -283,5 +284,30 @@ describe('describeToolUse', () => {
       'Bash: ls -la',
     );
     expect(describeToolUse('Foo', {})).toBe('Foo');
+  });
+});
+
+describe('clipInput', () => {
+  it('cuts long strings at any depth and keeps the shape', () => {
+    const big = 'y'.repeat(1000);
+    const out = clipInput({
+      file_path: 'a.ts',
+      content: big,
+      edits: [{ old: big }],
+    }) as {
+      file_path: string;
+      content: string;
+      edits: { old: string }[];
+    };
+    expect(out.file_path).toBe('a.ts');
+    expect(out.content).toHaveLength(201);
+    expect(out.edits[0].old).toHaveLength(201);
+  });
+
+  it('turns objects nested too deep into a cut JSON string', () => {
+    const deep = { a: { b: { c: { d: { e: 'x'.repeat(500) } } } } };
+    const out = clipInput(deep) as { a: { b: { c: { d: unknown } } } };
+    expect(typeof out.a.b.c.d).toBe('string');
+    expect((out.a.b.c.d as string).length).toBeLessThanOrEqual(201);
   });
 });

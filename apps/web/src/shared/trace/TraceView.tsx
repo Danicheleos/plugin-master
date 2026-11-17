@@ -1,10 +1,9 @@
 import { Badge, Modal, Text } from '@mantine/core';
 import type { Trace, TraceMetrics } from '@pm/protocol';
-import { useEvalTrace, type TraceTarget } from './hooks';
 import { maxPerBucket } from './downsample';
 import { MetricChart } from './MetricChart';
 import { TraceFlow } from './TraceFlow';
-import { cost, seconds, tokens } from './format';
+import { cost, seconds, tokens } from '../format';
 
 /** Numbers about a traced run: totals, then the calls per tool. */
 export function MetricsLine({ m }: { m: TraceMetrics }) {
@@ -82,6 +81,30 @@ export function TraceBody({
   );
 }
 
+/** A subagent's own trace (see `subagentTrace`): its numbers, context chart and flow. */
+export function SubagentTraceBody({ trace }: { trace: Trace }) {
+  const m = trace.metrics;
+  return (
+    <>
+      <Text size="xs" c="dimmed">
+        {m.modelCalls} model calls
+        {m.subagentModelCalls > 0 &&
+          ` (+${m.subagentModelCalls} in subagents)`}{' '}
+        · {m.toolCallsTotal} tool calls · max context {tokens(m.maxContext)} ·
+        final context {tokens(m.finalContext)} · out {tokens(m.outputTokens)} ·{' '}
+        {seconds(m.durationMs)}
+        {m.toolErrors > 0 && ` · ${m.toolErrors} tool errors`}
+      </Text>
+      <MetricChart
+        points={contextPoints(trace)}
+        label="Context per model call"
+        format={tokens}
+      />
+      <TraceFlow trace={trace} />
+    </>
+  );
+}
+
 /** Modal around a trace; the caller fetches it. */
 export function TraceDialog({
   title,
@@ -102,25 +125,5 @@ export function TraceDialog({
       {error && <Text c="red">{error.message}</Text>}
       {trace && <TraceBody trace={trace} byPrompt={byPrompt} />}
     </Modal>
-  );
-}
-
-export function TraceModal({
-  spaceId,
-  target,
-  onClose,
-}: {
-  spaceId: string;
-  target: TraceTarget;
-  onClose: () => void;
-}) {
-  const { data, error } = useEvalTrace(spaceId, target);
-  return (
-    <TraceDialog
-      title={`Trace: ${target.case} (${target.arm} ${target.n})`}
-      trace={data}
-      error={error}
-      onClose={onClose}
-    />
   );
 }

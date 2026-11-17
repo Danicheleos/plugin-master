@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import websocket from '@fastify/websocket';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ServerMessage } from '@pm/protocol';
+import { MAX_CHAT_ROWS, type ServerMessage } from '@pm/protocol';
 import Fastify from 'fastify';
 import { existsSync } from 'node:fs';
 import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
@@ -43,6 +43,7 @@ async function setup(
   const history: History = {
     list: async () => [],
     all: async () => [],
+    remove: async () => undefined,
     events: async (dir, id) => {
       asked.push({ dir, id });
       return [{ kind: 'user', text: 'old' }];
@@ -72,6 +73,7 @@ async function setup(
     interrupted: number;
     modes: string[];
     models: string[];
+    efforts: string[];
     failMode?: boolean;
   }[] = [];
   createSessionManager(
@@ -85,6 +87,7 @@ async function setup(
         interrupted: 0,
         modes: [] as string[],
         models: [] as string[],
+        efforts: [] as string[],
       };
       sessions.push(s);
       return {
@@ -96,6 +99,7 @@ async function setup(
           s.modes.push(m);
         },
         setModel: async (m) => void s.models.push(m),
+        setEffort: async (e) => void s.efforts.push(e),
         contextUsage: async () => ({
           tokens: 1200,
           max: 2000,
@@ -205,6 +209,7 @@ describe('session manager', () => {
     expect(sessions[0].o).toMatchObject({
       disabledPlugins: ['a@m'],
       autoMemory: false,
+      systemPrompt: 'preset',
     });
   });
 
@@ -250,7 +255,7 @@ describe('session manager', () => {
     await vi.waitFor(() => expect(c.types()).toContain('chat.history'));
     c.send({ type: 'chat.send', spaceId: 's1', text: 'hi' });
     await vi.waitFor(() => expect(sessions[0]?.texts).toEqual(['hi']));
-    expect(sessions[0].o.appendSystemPrompt).toMatch(
+    expect(sessions[0].o.masterPrompt).toMatch(
       /^# Role\nYou are the master agent[^]*# Plans\n[^]*# plugin-master context\nThe files below/,
     );
     expect(sessions[0].o.allowedTools).toContain('mcp__plan__plan_get');
@@ -265,6 +270,7 @@ describe('session manager', () => {
           status: 'running',
           mode: 'auto',
           model: 'claude-opus-5-5',
+          effort: 'default',
           contextFiles: [],
           missingContext: [],
           sessionId: null,
@@ -275,6 +281,7 @@ describe('session manager', () => {
           status: 'idle',
           mode: 'auto',
           model: 'claude-opus-5-5',
+          effort: 'default',
           contextFiles: [],
           missingContext: [],
           sessionId: null,
@@ -310,7 +317,7 @@ describe('session manager', () => {
     c.send({ type: 'subscribe', spaceId: 's1' });
     c.send({ type: 'chat.send', spaceId: 's1', text: 'hi' });
     await vi.waitFor(() => expect(sessions).toHaveLength(1));
-    expect(sessions[0].o.appendSystemPrompt).toContain(
+    expect(sessions[0].o.masterPrompt).toContain(
       '<file path="IDEA.md">\nCODENAME-X\n</file>',
     );
     await vi.waitFor(() =>
@@ -404,6 +411,7 @@ describe('session manager', () => {
         status: 'idle',
         mode: 'auto',
         model: 'claude-opus-5-5',
+        effort: 'default',
         contextFiles: null,
         missingContext: [],
         sessionId: null,
@@ -588,6 +596,19 @@ describe('session manager', () => {
         (m): m is Extract<ServerMessage, { type: 'agent.stats' }> =>
           m.type === 'agent.stats',
       );
+    const agentCall = {
+      type: 'tool_use',
+      id: 'toolu_1',
+      name: 'Agent',
+      input: {
+        description: 'Research',
+        subagent_type: 'Explore',
+        name: 'scout',
+      },
+    };
+    o.onMessage(
+      asMsg({ type: 'assistant', message: { content: [agentCall] } }),
+    );
     o.onMessage(
       asMsg({
         type: 'system',
@@ -595,6 +616,7 @@ describe('session manager', () => {
         task_id: 'k1',
         description: 'Research',
         subagent_type: 'Explore',
+        tool_use_id: 'toolu_1',
       }),
     );
     o.onMessage(sub([{ type: 'text', text: 'subagent chatter' }]));
@@ -602,6 +624,15 @@ describe('session manager', () => {
       sub([
         { type: 'tool_use', id: 't9', name: 'Grep', input: { pattern: 'x' } },
       ]),
+    );
+    // the subagent's call is its task's action, not the master's current action
+    await vi.waitFor(() =>
+      expect(stats().at(-1)).toMatchObject({
+        current: 'Agent: Research',
+        tasks: [
+          { id: 'k1', name: 'scout', toolUseId: 'toolu_1', action: 'Grep: x' },
+        ],
+      }),
     );
     o.onMessage(
       asMsg({
@@ -628,15 +659,19 @@ describe('session manager', () => {
       }),
     );
     await vi.waitFor(() =>
-      expect(stats().at(-1)).toMatchObject({
-        current: 'Grep: x',
-        tasks: [{ id: 'k1', status: 'completed', tokens: 800, toolUses: 5 }],
-      }),
+      // a finished task is no longer shown
+      expect(stats().at(-1)).toMatchObject({ tasks: [] }),
     );
     const chat = c.msgs.flatMap((m) =>
       m.type === 'chat.event' && m.event.kind !== 'user' ? [m.event] : [],
     );
     expect(chat).toEqual([
+      {
+        kind: 'tool_use',
+        id: 'toolu_1',
+        name: 'Agent',
+        input: agentCall.input,
+      },
       {
         kind: 'tool_use',
         id: 't9',
@@ -646,6 +681,36 @@ describe('session manager', () => {
       },
       { kind: 'text', text: 'master speaks' },
     ]);
+  });
+
+  it('keeps the last MAX_CHAT_ROWS rows: chat.history carries them and counts the dropped events', async () => {
+    const { sessions, client } = await setup();
+    const c = await client();
+    c.send({ type: 'subscribe', spaceId: 's1' });
+    c.send({ type: 'chat.send', spaceId: 's1', text: 'hi' });
+    await vi.waitFor(() => expect(sessions[0]).toBeDefined());
+    for (let i = 0; i < MAX_CHAT_ROWS + 100; i++)
+      sessions[0].o.onMessage(
+        asMsg({
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: `m${i}` }] },
+        }),
+      );
+    const c2 = await client();
+    c2.send({ type: 'subscribe', spaceId: 's1' });
+    await vi.waitFor(() =>
+      expect(c2.msgs.some((m) => m.type === 'chat.history')).toBe(true),
+    );
+    const h = c2.msgs.find(
+      (m): m is Extract<ServerMessage, { type: 'chat.history' }> =>
+        m.type === 'chat.history',
+    );
+    expect(h?.events).toHaveLength(MAX_CHAT_ROWS);
+    expect(h?.events.at(-1)).toEqual({
+      kind: 'text',
+      text: `m${MAX_CHAT_ROWS + 99}`,
+    });
+    expect(h?.earlier).toBe(101); // the user prompt and the first 100 replies
   });
 
   it('replays every subagent tool event in chat.history', async () => {
@@ -787,6 +852,33 @@ describe('session manager', () => {
       expect(c.msgs.filter((m) => m.type === 'error')).toHaveLength(1),
     );
     expect(sessions[0].models).toEqual(['claude-sonnet-5-5']);
+  });
+
+  it('tracks the effort per space and passes it to the live and the next session', async () => {
+    const { sessions, client } = await setup();
+    const c = await client();
+    const efforts = () =>
+      c.msgs.flatMap((m) =>
+        m.type === 'chat.status' || m.type === 'chat.history' ? [m.effort] : [],
+      );
+    c.send({ type: 'subscribe', spaceId: 's1' });
+    await vi.waitFor(() => expect(efforts()).toEqual(['default']));
+
+    c.send({ type: 'chat.effort', spaceId: 's1', effort: 'high' });
+    await vi.waitFor(() => expect(efforts().at(-1)).toBe('high'));
+    c.send({ type: 'chat.send', spaceId: 's1', text: 'hi' });
+    await vi.waitFor(() => expect(sessions).toHaveLength(1));
+    expect(sessions[0].o.effort).toBe('high');
+
+    c.send({ type: 'chat.effort', spaceId: 's1', effort: 'max' });
+    await vi.waitFor(() => expect(sessions[0].efforts).toEqual(['max']));
+    expect(efforts().at(-1)).toBe('max');
+
+    c.send({ type: 'chat.effort', spaceId: 's1', effort: 'huge' as never });
+    await vi.waitFor(() =>
+      expect(c.msgs.filter((m) => m.type === 'error')).toHaveLength(1),
+    );
+    expect(sessions[0].efforts).toEqual(['max']);
   });
 
   describe('auto-commit', () => {

@@ -1,8 +1,15 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { create, read, tree, write } from './service';
+import { create, read, remove, tree, write } from './service';
 
 let root: string;
 beforeEach(async () => {
@@ -66,5 +73,23 @@ describe('files service', () => {
       status: 415,
     });
     await expect(read(root, 'nope')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('remove deletes a file; refuses directories, .git and paths outside the space', async () => {
+    await writeFile(join(root, 'a.md'), 'x');
+    await remove(root, 'a.md');
+    await expect(access(join(root, 'a.md'))).rejects.toThrow();
+    await expect(remove(root, 'a.md')).rejects.toMatchObject({ status: 404 });
+    await mkdir(join(root, 'dir'));
+    await expect(remove(root, 'dir')).rejects.toMatchObject({ status: 400 });
+    await mkdir(join(root, '.git'));
+    await writeFile(join(root, '.git/HEAD'), 'ref');
+    await expect(remove(root, '.git/HEAD')).rejects.toMatchObject({
+      status: 403,
+    });
+    await expect(access(join(root, '.git/HEAD'))).resolves.toBeUndefined();
+    await expect(remove(root, '../x')).rejects.toMatchObject({
+      code: 'PATH_OUTSIDE_SPACE',
+    });
   });
 });

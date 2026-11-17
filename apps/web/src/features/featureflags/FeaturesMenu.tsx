@@ -1,5 +1,9 @@
 import { Button, Menu, Text } from '@mantine/core';
-import type { Features } from '@pm/protocol';
+import {
+  FEATURE_REQUIRES,
+  featureDependents,
+  type Features,
+} from '@pm/protocol';
 import { useFeatures, useSetFeatures } from './hooks';
 
 const ITEMS: {
@@ -36,20 +40,30 @@ export function FeaturesMenu({ spaceId }: { spaceId: string }) {
         </Button>
       </Menu.Target>
       <Menu.Dropdown>
+        {set.error && (
+          <Text size="xs" c="red" px="sm" py={4} role="alert">
+            Could not save: {set.error.message}
+          </Text>
+        )}
         {ITEMS.map(({ key, label, hint }) => {
           const on = data?.[key] ?? false;
+          const required = FEATURE_REQUIRES[key];
           return (
             <Menu.Item
               key={key}
               role="menuitemcheckbox"
               aria-checked={on}
-              disabled={!data || (key !== 'git' && key !== 'userSettings' && !data.git)}
+              disabled={!data || (!!required && !data[required])}
               leftSection={on ? '☑' : '☐'}
-              // turning git off also turns its dependents off
+              // turning a feature off also turns its dependents off
               onClick={() =>
                 set.mutate({
                   [key]: !on,
-                  ...(key === 'git' && on ? { autoCommit: false, masterLoop: false } : {}),
+                  ...(on
+                    ? Object.fromEntries(
+                        featureDependents(key).map((f) => [f, false]),
+                      )
+                    : {}),
                 })
               }
             >

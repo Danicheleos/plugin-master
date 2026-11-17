@@ -1,7 +1,16 @@
 .root {
+  position: relative;
   flex: 1;
   min-height: 0;
   height: 100%;
+}
+
+.note {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  z-index: 5;
+  pointer-events: none;
 }
 
 .node {

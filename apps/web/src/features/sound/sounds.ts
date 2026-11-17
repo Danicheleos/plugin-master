@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { createPersistentStore } from '../../shared/storage';
 
 /** Quiet, short, low sounds for "the agent has finished"; synthesized, so there are no audio files. */
 type Note = {
@@ -49,51 +50,35 @@ const DEFAULT: SoundPrefs = { sound: 'off', volume: 0.5 };
 /** Master gain at volume 1: still gentle. */
 const MAX_GAIN = 0.12;
 
-let cached: { raw: string | null; prefs: SoundPrefs } | undefined;
-const listeners = new Set<() => void>();
-
-function read(): SoundPrefs {
-  let raw: string | null = null;
-  try {
-    raw = localStorage.getItem(KEY);
-  } catch {
-    if (cached) return cached.prefs; // storage blocked: keep the in-memory value
-  }
-  if (cached && raw === cached.raw) return cached.prefs;
-  let prefs = DEFAULT;
+function parseSound(raw: string | null): SoundPrefs {
   try {
     const j = raw === null ? {} : JSON.parse(raw);
-    prefs = {
-      sound: j.sound === 'off' || j.sound in SOUNDS ? j.sound : DEFAULT.sound,
+    return {
+      sound:
+        j.sound === 'off' ||
+        (Object.keys(SOUNDS) as unknown[]).includes(j.sound)
+          ? j.sound
+          : DEFAULT.sound,
       volume:
         typeof j.volume === 'number'
           ? Math.min(1, Math.max(0, j.volume))
           : DEFAULT.volume,
     };
   } catch {
-    // corrupt value: defaults
+    return DEFAULT; // corrupt value
   }
-  cached = { raw, prefs };
-  return prefs;
 }
 
-export function setSoundPrefs(patch: Partial<SoundPrefs>) {
-  const prefs = { ...read(), ...patch };
-  const raw = JSON.stringify(prefs);
-  cached = { raw, prefs };
-  try {
-    localStorage.setItem(KEY, raw);
-  } catch {
-    // memory only
-  }
-  listeners.forEach((l) => l());
-}
+const store = createPersistentStore<SoundPrefs>({
+  key: () => KEY,
+  parse: parseSound,
+});
+const read = () => store.read();
 
-export const useSoundPrefs = () =>
-  useSyncExternalStore((l) => {
-    listeners.add(l);
-    return () => listeners.delete(l);
-  }, read);
+export const setSoundPrefs = (patch: Partial<SoundPrefs>) =>
+  store.write('', { ...read(), ...patch });
+
+export const useSoundPrefs = () => useSyncExternalStore(store.subscribe, read);
 
 let ctx: AudioContext | undefined;
 

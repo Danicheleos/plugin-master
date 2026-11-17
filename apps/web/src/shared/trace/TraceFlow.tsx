@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import {
   Anchor,
   Badge,
@@ -16,19 +16,12 @@ import type {
   TraceTurn,
 } from '@pm/protocol';
 import { describeTool, toolKind, type ToolKind } from './describeTool';
-import { cost, seconds, tokens } from './format';
-import styles from './evals.module.scss';
+import { cost, seconds, tokens } from '../format';
+import styles from './trace.module.scss';
 import { useFollowedOpen } from './useFollowedOpen';
 import { DetailView } from './DetailView';
+import { TOOL_KIND_COLOR } from '../ui/status';
 
-const COLOR: Record<ToolKind, string> = {
-  skill: 'grape',
-  read: 'blue',
-  edit: 'orange',
-  bash: 'teal',
-  agent: 'violet',
-  other: 'gray',
-};
 const LABEL: Record<ToolKind, string> = {
   skill: 'skill fired',
   read: 'read',
@@ -133,10 +126,14 @@ export function ToolCall({
   const sub = kind === 'agent' ? subagents.get(t.id) : undefined;
   return (
     <div className={styles.branch}>
-      <Block color={err ? 'red' : kind === 'skill' ? COLOR.skill : undefined}>
+      <Block
+        color={
+          err ? 'red' : kind === 'skill' ? TOOL_KIND_COLOR.skill : undefined
+        }
+      >
         <Group gap="xs" wrap="nowrap">
           <Badge
-            color={COLOR[kind]}
+            color={TOOL_KIND_COLOR[kind]}
             variant={kind === 'skill' ? 'filled' : 'light'}
           >
             {kind === 'skill'
@@ -189,7 +186,7 @@ function Run({ kind, tools }: { kind: ToolKind; tools: TraceToolUse[] }) {
     <div className={styles.branch}>
       <Block color={errors ? 'red' : undefined}>
         <Group gap="xs">
-          <Badge color={COLOR[kind]}>
+          <Badge color={TOOL_KIND_COLOR[kind]}>
             {tools.length} {LABEL[kind]}s
           </Badge>
           {errors > 0 && <Badge color="red">{errors} errors</Badge>}
@@ -432,7 +429,10 @@ export function TraceFlow({
   byPrompt?: boolean;
 }) {
   const m = trace.metrics;
-  const subagents = new Map(m.subagents.map((s) => [s.toolUseId, s]));
+  const subagents = useMemo(
+    () => new Map(m.subagents.map((s) => [s.toolUseId, s])),
+    [m.subagents],
+  );
   const groups = byPrompt && trace.prompts?.length ? promptGroups(trace) : null;
   const openGroup = groups
     ? groups.reduce((at, g, k) => (g.turns.length ? k : at), -1)

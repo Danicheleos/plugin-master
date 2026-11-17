@@ -116,7 +116,9 @@ export function buildApp(
         ),
       );
       const projects = defaultProjectsDir(config.userHome);
-      await api.register(sessionsRoutes(registry, history, projects));
+      await api.register(
+        sessionsRoutes(registry, history, projects, chat.openSession),
+      );
       await api.register(runsRoutes(registry, projects));
       await api.register(hooksRoutes(registry));
       await api.register(

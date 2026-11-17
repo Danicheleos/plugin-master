@@ -1,18 +1,23 @@
-import { useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
+  ActionIcon,
   Alert,
   Button,
   Group,
   Loader,
+  Modal,
   Text,
-  useComputedColorScheme,
+  Tooltip,
 } from '@mantine/core';
-import MonacoEditor from '@monaco-editor/react';
+import { useLatestCallback } from '../../shared/ui/useLatestCallback';
+import { useMonacoTheme } from '../../shared/ui/useMonacoTheme';
+import MonacoEditor, { type OnMount } from '@monaco-editor/react';
 import { ApiError } from '../../api/http';
-import { useQueryClient } from '@tanstack/react-query';
-import { fileKey, useCreateFile, useFile, useSaveFile } from './hooks';
+import { useDeleteFile, useFile, useSaveDraft } from './hooks';
+import { usePlainEditor } from './useNativeEditor';
 import { useDraft } from './useDraft';
 import styles from './files.module.scss';
+import { QueryError } from '../../shared/ui/QueryError';
 
 const LANGUAGES: Record<string, string> = {
   md: 'markdown',
@@ -25,10 +30,22 @@ const LANGUAGES: Record<string, string> = {
 const languageOf = (path: string) =>
   LANGUAGES[path.split('.').pop() ?? ''] ?? 'plaintext';
 
-type Props = { spaceId: string; path: string };
+type Props = {
+  spaceId: string;
+  path: string;
+  /** called after the file was deleted, so the host can close it */
+  onDeleted?: () => void;
+};
 
-export function FileEditor({ spaceId, path }: Props) {
+export function FileEditor({ spaceId, path, onDeleted }: Props) {
   const { data, error } = useFile(spaceId, path);
+  const [deleted, setDeleted] = useState<string | null>(null);
+  if (deleted === path)
+    return (
+      <Text p="md" c="dimmed">
+        {path} was deleted
+      </Text>
+    );
   // keep a loaded editor (and its unsaved edits) even if a refetch fails
   if (data)
     return (
@@ -36,6 +53,10 @@ export function FileEditor({ spaceId, path }: Props) {
         key={path}
         spaceId={spaceId}
         path={path}
+        onDeleted={() => {
+          setDeleted(path);
+          onDeleted?.();
+        }}
         disk={data.content}
         gone={error instanceof ApiError && error.status === 404}
       />
@@ -61,59 +82,146 @@ function Editor({
   path,
   disk,
   gone,
+  onDeleted,
 }: Props & { disk: string; gone: boolean }) {
+  const [plain, setPlain] = usePlainEditor();
+  const [confirming, setConfirming] = useState(false);
+  const del = useDeleteFile(spaceId);
   const draft = useDraft(disk);
   // a file deleted on disk is saved by creating it again
-  const save = useSaveFile(spaceId);
-  const create = useCreateFile(spaceId);
-  const writer = gone ? create : save;
-  const qc = useQueryClient();
+  const saver = useSaveDraft(spaceId, path, draft, { create: gone });
   const [editing, setEditing] = useState(false);
-  const scheme = useComputedColorScheme('light');
+  const theme = useMonacoTheme();
 
   const saveNow = () =>
-    writer.mutate(
-      { path, content: draft.value },
-      {
-        onSuccess: () => {
-          // state first, then cache: the cache update re-renders with disk === value
-          draft.saved(draft.value);
-          setEditing(false);
-          qc.setQueryData(fileKey(spaceId, path), { path, content: draft.value });
-        },
-      },
+    void saver.write(draft.value).then(
+      () => setEditing(false),
+      () => undefined, // shown through `saver.error`
     );
-  const saveRef = useRef(saveNow);
-  saveRef.current = saveNow;
+  // the Monaco command is registered once and must call the latest save
+  const saveLatest = useLatestCallback(saveNow);
+  // stable identities: a new options object on every keystroke makes the Monaco wrapper call updateOptions each time
+  const options = useMemo(
+    () => ({
+      minimap: { enabled: false },
+      wordWrap: 'on' as const,
+      readOnly: !editing,
+      // sets `readonly` on the input textarea, so focus does not open the touch keyboard
+      domReadOnly: !editing,
+    }),
+    [editing],
+  );
+  const onMount: OnMount = useMemo(
+    () => (editor, monaco) =>
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () =>
+        saveLatest(),
+      ),
+    [saveLatest],
+  );
 
   return (
     <div className={styles.editor}>
-      <Group className={styles.header} justify="space-between" px="md" py={6}>
-        <span>
-          {path}
-          {draft.dirty && ' ●'}
+      <Group
+        className={styles.header}
+        justify="space-between"
+        wrap="nowrap"
+        px="md"
+        py={6}
+      >
+        <span className={styles.headerPath} title={path}>
+          <bdi>
+            {path}
+            {draft.dirty && ' ●'}
+          </bdi>
         </span>
-        {editing && draft.dirty ? (
-          <Button size="compact-sm" disabled={writer.isPending} onClick={saveNow}>
-            Save
-          </Button>
-        ) : editing ? (
-          <Button
-            size="compact-sm"
-            variant="default"
-            onClick={() => setEditing(false)}
-          >
-            Close
-          </Button>
-        ) : (
-          <Button size="compact-sm" onClick={() => setEditing(true)}>
-            Edit
-          </Button>
-        )}
+        <Group gap="xs" wrap="nowrap">
+          <Tooltip label={plain ? 'Switch to Monaco' : 'Switch to plain text'}>
+            <Button
+              size="compact-sm"
+              variant="subtle"
+              aria-label="Toggle plain text editor"
+              onClick={() => setPlain(!plain)}
+            >
+              {plain ? 'Plain' : 'Monaco'}
+            </Button>
+          </Tooltip>
+          <Tooltip label="Delete file">
+            <ActionIcon
+              variant="default"
+              color="red"
+              aria-label="Delete file"
+              disabled={gone}
+              onClick={() => setConfirming(true)}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6" />
+              </svg>
+            </ActionIcon>
+          </Tooltip>
+          {editing && draft.dirty ? (
+            <Button
+              size="compact-sm"
+              disabled={saver.isPending}
+              onClick={saveNow}
+            >
+              Save
+            </Button>
+          ) : editing ? (
+            <Button
+              size="compact-sm"
+              variant="default"
+              onClick={() => setEditing(false)}
+            >
+              Close
+            </Button>
+          ) : (
+            <Button size="compact-sm" onClick={() => setEditing(true)}>
+              Edit
+            </Button>
+          )}
+        </Group>
       </Group>
-      {writer.error && (
+      <Modal
+        opened={confirming}
+        onClose={() => setConfirming(false)}
+        title="Delete file"
+        centered
+      >
+        <Text>Delete {path}? This cannot be undone.</Text>
+        {del.error && <QueryError error={del.error} />}
+        <Group justify="flex-end" mt="md">
+          <Button variant="default" onClick={() => setConfirming(false)}>
+            Cancel
+          </Button>
+          <Button
+            color="red"
+            loading={del.isPending}
+            onClick={() =>
+              del.mutate(path, {
+                onSuccess: () => {
+                  setConfirming(false);
+                  onDeleted?.();
+                },
+              })
+            }
+          >
+            Delete
+          </Button>
+        </Group>
+      </Modal>
+      {saver.error && (
         <Text c="red" px="md">
-          {writer.error.message}
+          {saver.error.message}
         </Text>
       )}
       {gone && (
@@ -125,39 +233,49 @@ function Editor({
         <Alert color="yellow" radius={0}>
           <Group>
             <span>File changed on disk</span>
-            <Button
-              size="compact-sm"
-              variant="default"
-              onClick={draft.reload}
-            >
+            <Button size="compact-sm" variant="default" onClick={draft.reload}>
               Reload
             </Button>
-            <Button
-              size="compact-sm"
-              variant="default"
-              onClick={draft.accept}
-            >
+            <Button size="compact-sm" variant="default" onClick={draft.accept}>
               Keep my edits
             </Button>
           </Group>
         </Alert>
       )}
-      <MonacoEditor
-        path={path}
-        theme={scheme === 'dark' ? 'vs-dark' : 'vs'}
-        language={languageOf(path)}
-        value={draft.value}
-        onChange={(v) => draft.setValue(v ?? '')}
-        onMount={(editor, monaco) =>
-          editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () =>
-            saveRef.current(),
-          )
-        }
-        options={{ minimap: { enabled: false }, wordWrap: 'on', readOnly: !editing,
-          // sets `readonly` on the input textarea, so focus does not open the touch keyboard
-          domReadOnly: !editing,
-        }}
-      />
+      {plain ? (
+        editing ? (
+          <textarea
+            className={styles.plain}
+            value={draft.value}
+            onChange={(e) => draft.setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                saveLatest();
+              }
+            }}
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            autoComplete="off"
+            aria-label={`Edit ${path}`}
+          />
+        ) : (
+          <pre className={`${styles.plain} ${styles.readonly}`}>
+            {draft.value}
+          </pre>
+        )
+      ) : (
+        <MonacoEditor
+          path={path}
+          theme={theme}
+          language={languageOf(path)}
+          value={draft.value}
+          onChange={(v) => draft.setValue(v ?? '')}
+          onMount={onMount}
+          options={options}
+        />
+      )}
     </div>
   );
 }

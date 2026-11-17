@@ -12,7 +12,7 @@ vi.mock('@monaco-editor/react', () => ({
     <div data-testid="diff">{`${p.originalModelPath} ${p.modifiedModelPath}`}</div>
   ),
 }));
-vi.mock('../evals/TraceView', () => ({
+vi.mock('../evals/TraceModal', () => ({
   TraceModal: ({
     target,
   }: {

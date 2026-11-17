@@ -1,29 +1,33 @@
 import { Select, Text } from '@mantine/core';
 import type { ChatMode } from '@pm/protocol';
 
-const MODES: { value: ChatMode; label: string; description: string }[] = [
-  { value: 'default', label: 'Manual', description: 'Ask before every action' },
-  {
-    value: 'acceptEdits',
-    label: 'Accept edits',
-    description: 'File edits are allowed, the rest asks',
-  },
-  {
-    value: 'plan',
-    label: 'Plan',
-    description: 'Read-only; proposes a plan, approving it leaves plan mode',
-  },
-  {
-    value: 'auto',
-    label: 'Auto',
-    description: 'A classifier decides, asks when unsure',
-  },
-  {
-    value: 'dontAsk',
-    label: 'Don’t ask',
-    description: 'Only pre-allowed tools; the rest is denied',
-  },
+export const MODE_LABELS: Record<ChatMode, string> = {
+  default: 'Manual',
+  acceptEdits: 'Accept edits',
+  plan: 'Plan',
+  auto: 'Auto',
+  dontAsk: 'Don’t ask',
+};
+
+const MODE_DESCRIPTIONS: Record<ChatMode, string> = {
+  default: 'Ask before every action',
+  acceptEdits: 'File edits are allowed, the rest asks',
+  plan: 'Read-only; proposes a plan, approving it leaves plan mode',
+  auto: 'A classifier decides, asks when unsure',
+  dontAsk: 'Only pre-allowed tools; the rest is denied',
+};
+
+const MODE_ORDER: ChatMode[] = [
+  'default',
+  'acceptEdits',
+  'plan',
+  'auto',
+  'dontAsk',
 ];
+const MODE_DATA = MODE_ORDER.map((value) => ({
+  value,
+  label: MODE_LABELS[value],
+}));
 
 /** Permission mode of the agent; applies to the live session at once. */
 export function ModeSelect({
@@ -39,14 +43,14 @@ export function ModeSelect({
       w={130}
       aria-label="Mode"
       allowDeselect={false}
-      data={MODES.map(({ value, label }) => ({ value, label }))}
+      data={MODE_DATA}
       value={mode}
       onChange={(m) => m && onChange(m as ChatMode)}
       renderOption={({ option }) => (
         <div>
           <Text size="sm">{option.label}</Text>
           <Text size="xs" c="dimmed">
-            {MODES.find((m) => m.value === option.value)?.description}
+            {MODE_DESCRIPTIONS[option.value as ChatMode]}
           </Text>
         </div>
       )}

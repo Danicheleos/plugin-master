@@ -10,16 +10,27 @@ import {
   type SDKMessage,
   type SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentTask, ChatMode, ChatModel, ContextUsage } from '@pm/protocol';
+import type {
+  AgentTask,
+  ChatEffort,
+  ChatMode,
+  ChatModel,
+  ContextUsage,
+} from '@pm/protocol';
 import { AsyncQueue } from '../lib/async-queue';
 import { createMasterHooks } from './master-hook';
 import { DEFAULT_AGENT_PRESETS, SUBAGENT_MODEL } from './agent-presets';
 
 export type SessionOptions = {
   cwd: string;
-  appendSystemPrompt: string;
+  /** MASTER.md and the pinned files: appended to Claude Code's prompt (`preset`) or the whole prompt (`custom`). */
+  masterPrompt: string;
+  /** `custom` drops Claude Code's own system prompt; default `preset`. */
+  systemPrompt?: 'preset' | 'custom';
   mode: ChatMode;
   model: ChatModel;
+  /** Reasoning effort; `default` (or absent) = the model's own default. */
+  effort?: ChatEffort;
   /** Also load ~/.claude (and local) settings; default: project settings only. */
   userSettings?: boolean;
   /** SDK session id to continue */
@@ -50,6 +61,7 @@ export type Session = {
   interrupt(): Promise<void>;
   setMode(mode: ChatMode): Promise<void>;
   setModel(model: ChatModel): Promise<void>;
+  setEffort(effort: ChatEffort): Promise<void>;
   /** Context window use of the conversation; null when unknown. */
   contextUsage(): Promise<ContextUsage | null>;
   close(): void;
@@ -87,14 +99,32 @@ export function toContextUsage(
 }
 
 /** Only non-default values are emitted, so a default config adds nothing. */
-function sessionFlagSettings(o: Pick<SessionOptions, 'disabledPlugins' | 'autoMemory'>): Settings | undefined {
+function sessionFlagSettings(
+  o: Pick<SessionOptions, 'disabledPlugins' | 'autoMemory'>,
+): Settings | undefined {
   const settings: Settings = {
     ...(o.disabledPlugins?.length && {
-      enabledPlugins: Object.fromEntries(o.disabledPlugins.map((id) => [id, false])),
+      enabledPlugins: Object.fromEntries(
+        o.disabledPlugins.map((id) => [id, false]),
+      ),
     }),
     ...(o.autoMemory === false && { autoMemoryEnabled: false }),
   };
   return Object.keys(settings).length ? settings : undefined;
+}
+
+/** What the preset would tell the model about where it runs, for a custom prompt. */
+export function environmentSection(
+  cwd: string,
+  now: Date = new Date(),
+  platform: string = process.platform,
+): string {
+  return [
+    '# Environment',
+    `- Working directory: ${cwd}`,
+    `- Platform: ${platform}`,
+    `- Session started: ${now.toISOString().slice(0, 10)}`,
+  ].join('\n');
 }
 
 /** SDK `query()` options of a master session. */
@@ -107,6 +137,7 @@ export function sessionQueryOptions(
     cwd: o.cwd,
     resume: o.resume,
     model: o.model,
+    ...(o.effort && o.effort !== 'default' && { effort: o.effort }),
     // the SDK `env` option replaces the inherited env, so it is merged here
     env: {
       ...base,
@@ -115,15 +146,19 @@ export function sessionQueryOptions(
       // inherited FORCE would drop the presets' models and the Agent tool's `model` input
       CLAUDE_CODE_SUBAGENT_MODEL_FORCE: undefined,
       // a defined falsy value (e.g. `0`) forces memory ON over the `autoMemoryEnabled` setting
-      ...(o.autoMemory === false && { CLAUDE_CODE_DISABLE_AUTO_MEMORY: undefined }),
+      ...(o.autoMemory === false && {
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: undefined,
+      }),
     },
     // flag scope beats user/project/local, and is active whatever `settingSources` says
     settings: sessionFlagSettings(o),
-    systemPrompt: {
-      type: 'preset',
-      preset: 'claude_code',
-      append: o.appendSystemPrompt,
-    },
+    systemPrompt:
+      o.systemPrompt === 'custom'
+        ? {
+            type: 'custom',
+            prompt: [o.masterPrompt, environmentSection(o.cwd)],
+          }
+        : { type: 'preset', preset: 'claude_code', append: o.masterPrompt },
     settingSources: o.userSettings ? ['user', 'project', 'local'] : ['project'],
     // always explicit: when omitted the CLI may start in 'auto'
     permissionMode: o.mode,
@@ -133,7 +168,13 @@ export function sessionQueryOptions(
     // per-call and definition models apply (no CLAUDE_CODE_SUBAGENT_MODEL_FORCE); a space's own
     // presets are merged over the defaults by the session manager
     agents,
-    hooks: createMasterHooks({ root: o.cwd, files: o.pinnedFiles ?? [], tasks: o.tasks ?? (() => []), agents, plan: o.plan }),
+    hooks: createMasterHooks({
+      root: o.cwd,
+      files: o.pinnedFiles ?? [],
+      tasks: o.tasks ?? (() => []),
+      agents,
+      plan: o.plan,
+    }),
   };
 }
 
@@ -169,6 +210,13 @@ class ClaudeSession implements Session {
 
   async setModel(model: ChatModel): Promise<void> {
     await this.q.setModel(model);
+  }
+
+  /** Live change through the flag settings; `null` returns to the model's default effort. */
+  async setEffort(effort: ChatEffort): Promise<void> {
+    await this.q.applyFlagSettings({
+      effortLevel: effort === 'default' ? null : effort,
+    });
   }
 
   async contextUsage(): Promise<ContextUsage | null> {

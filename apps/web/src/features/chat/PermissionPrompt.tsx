@@ -1,5 +1,6 @@
 import { Button, Code, Group, Modal } from '@mantine/core';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { ServerMessage } from '@pm/protocol';
 
 type Props = {
@@ -25,7 +26,7 @@ export function PermissionPrompt({ request, onReply }: Props) {
           data-autofocus
           tabIndex={-1}
         >
-          <Markdown>{plan}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]}>{plan}</Markdown>
         </div>
       ) : (
         <Code block fz="xs" mah="40vh" data-autofocus tabIndex={-1}>

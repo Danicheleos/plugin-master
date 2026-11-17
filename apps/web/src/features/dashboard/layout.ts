@@ -1,38 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import type { FeatureName, Features } from '@pm/protocol';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { storage } from '../../shared/storage';
+import { useLatestCallback } from '../../shared/ui/useLatestCallback';
+import {
+  WIDGETS,
+  WIDGET_TYPES,
+  isWidgetType,
+  widgetEnabled,
+  type WidgetType,
+} from './registry';
 
-export const WIDGET_TYPES = [
-  'files',
-  'editor',
-  'evals',
-  'chat',
-  'plan',
-  'runs',
-  'hooks',
-  'skills',
-  'git',
-  'experiments',
-  'versions',
-  'graph',
-] as const;
-export type WidgetType = (typeof WIDGET_TYPES)[number];
-
-/** Widget types that need an optional feature. */
-const WIDGET_FEATURE: Partial<Record<WidgetType, FeatureName>> = {
-  git: 'git',
-  versions: 'git',
-  experiments: 'masterLoop',
-};
-
-/** False when the type's feature is off (or not loaded yet); such items stay persisted but are not shown. */
-export const widgetEnabled = (type: WidgetType, features?: Features) => {
-  const f = WIDGET_FEATURE[type];
-  return !f || !!features?.[f];
-};
+export { WIDGET_TYPES, widgetEnabled, type WidgetType };
 
 /**
- * One widget instance. `i` is its unique id (`files`, `editor-2`, ...); `static` = pinned (cannot be
- * moved, resized or removed); `file` = the open file of an editor instance.
+ * One widget instance. `i` is its unique id (`files`, `editor-2`, ...); `file` = the open file of an
+ * editor instance. Pinning is off: a `static` flag in stored layouts is dropped when parsing.
  */
 export type Item = {
   i: string;
@@ -41,7 +22,6 @@ export type Item = {
   y: number;
   w: number;
   h: number;
-  static?: boolean;
   file?: string;
   /** Collapsed to its header (`h` is then `COLLAPSED_H`): the height to restore. */
   prevH?: number;
@@ -50,19 +30,49 @@ export type Item = {
 };
 
 export const COLS = 12;
+
+/** Responsive layouts: `lg` is the source of truth (the items' own x/y/w/h); `md` and `sm` are stored separately once the user edits them there. */
+export type Breakpoint = 'lg' | 'md' | 'sm';
+/** Min container width (px) of a breakpoint: iPad landscape lands in `md`, iPad portrait in `sm`. */
+export const BREAKPOINTS: Record<Breakpoint, number> = {
+  lg: 1280,
+  md: 900,
+  sm: 0,
+};
+export const BP_COLS: Record<Breakpoint, number> = { lg: COLS, md: 8, sm: 4 };
+/** Narrowest a derived widget gets (columns), so a 4-column layout stays usable. */
+const MIN_DERIVED_W = 2;
+
+export const breakpointFor = (width: number): Breakpoint =>
+  width >= BREAKPOINTS.lg ? 'lg' : width >= BREAKPOINTS.md ? 'md' : 'sm';
+
+export type Rect = { x: number; y: number; w: number; h: number };
+/** Stored non-lg layouts: breakpoint -> widget id -> rect. */
+export type BpLayouts = Partial<Record<'md' | 'sm', Record<string, Rect>>>;
 /** Rows of a collapsed widget: its header. */
 export const COLLAPSED_H = 1;
 
+const defaultItem = (type: WidgetType, x: number, y: number): Item => ({
+  i: type,
+  type,
+  x,
+  y,
+  ...WIDGETS[type].defaultSize,
+});
+
+/** The initial layout; sizes come from the widget registry. */
 export const DEFAULT_ITEMS: readonly Item[] = [
-  { i: 'files', type: 'files', x: 0, y: 0, w: 2, h: 20 },
-  { i: 'editor', type: 'editor', x: 2, y: 0, w: 6, h: 12 },
-  { i: 'evals', type: 'evals', x: 2, y: 12, w: 6, h: 8 },
-  { i: 'chat', type: 'chat', x: 8, y: 0, w: 4, h: 13 },
-  { i: 'plan', type: 'plan', x: 8, y: 13, w: 4, h: 7 },
+  defaultItem('files', 0, 0),
+  defaultItem('editor', 2, 0),
+  defaultItem('evals', 2, 12),
+  defaultItem('chat', 8, 0),
+  defaultItem('plan', 8, 13),
 ];
 
 const defaults = (): Item[] => DEFAULT_ITEMS.map((d) => ({ ...d }));
 const key = (spaceId: string) => `pm.dashboard.${spaceId}`;
+/** md/sm layouts live beside the lg list, which keeps its old format. */
+const layoutsKey = (spaceId: string) => `pm.dashboard.${spaceId}.layouts`;
 const isNum = (v: unknown): v is number =>
   typeof v === 'number' && Number.isFinite(v);
 
@@ -78,7 +88,7 @@ export function parseItems(raw: string | null): Item[] {
       const type = v.type ?? v.i;
       if (
         typeof v.i !== 'string' ||
-        !WIDGET_TYPES.includes(type as WidgetType) ||
+        !isWidgetType(type) ||
         seen.has(v.i) ||
         !isNum(v.x) ||
         !isNum(v.y) ||
@@ -96,7 +106,6 @@ export function parseItems(raw: string | null): Item[] {
           y,
           w,
           h,
-          ...(v.static ? { static: true } : {}),
           ...(typeof v.file === 'string' ? { file: v.file } : {}),
           ...(isNum(v.prevH) ? { prevH: v.prevH } : {}),
           ...(isNum(v.z) ? { z: v.z } : {}),
@@ -105,6 +114,103 @@ export function parseItems(raw: string | null): Item[] {
     });
   } catch {
     return defaults();
+  }
+}
+
+const clamp = (v: number, lo: number, hi: number) =>
+  Math.min(Math.max(v, lo), Math.max(lo, hi));
+
+/** Fits a rect into `cols` columns (x/w clamped, h and y untouched). */
+export function clampRect(r: Rect, cols: number): Rect {
+  const w = clamp(Math.round(r.w), 1, cols);
+  return { ...r, w, x: clamp(Math.round(r.x), 0, cols - w) };
+}
+
+/** A lg rect for a layout of `cols` columns: x and w scaled, then clamped; y and h kept. */
+export function deriveRect(lg: Rect, cols: number): Rect {
+  if (cols === COLS) return { x: lg.x, y: lg.y, w: lg.w, h: lg.h };
+  const minW = Math.min(MIN_DERIVED_W, cols);
+  const w = clamp(Math.round((lg.w * cols) / COLS), minW, cols);
+  const x = clamp(Math.round((lg.x * cols) / COLS), 0, cols - w);
+  return { x, y: lg.y, w, h: lg.h };
+}
+
+const sameRect = (a: Rect, b: Rect) =>
+  a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+
+/**
+ * The items as laid out at a breakpoint: `lg` is `items` itself; others use the stored rect of a
+ * widget, else one derived from its lg rect. A collapsed widget is always `COLLAPSED_H` high.
+ */
+export function layoutFor(
+  items: readonly Item[],
+  bp: Breakpoint,
+  stored: BpLayouts = {},
+): Item[] {
+  if (bp === 'lg') return [...items];
+  const cols = BP_COLS[bp];
+  return items.map((it) => {
+    const own = stored[bp]?.[it.i];
+    const r = own
+      ? clampRect(own, cols)
+      : deriveRect({ ...it, h: it.prevH ?? it.h }, cols);
+    return { ...it, ...r, h: it.prevH === undefined ? r.h : COLLAPSED_H };
+  });
+}
+
+/**
+ * Stores what the grid reports at a non-lg breakpoint; widgets whose rect equals what is shown
+ * already (so still derived) are not stored, collapsed ones keep their stored height. The same
+ * object when nothing changed. Ids not in `items` are dropped.
+ */
+export function storeLayout(
+  items: readonly Item[],
+  stored: BpLayouts,
+  bp: 'md' | 'sm',
+  layout: readonly (Rect & { i: string })[],
+): BpLayouts {
+  const shown = layoutFor(items, bp, stored);
+  const next: Record<string, Rect> = {};
+  for (const it of items) {
+    const l = layout.find((x) => x.i === it.i);
+    const cur = shown.find((x) => x.i === it.i);
+    const prev = stored[bp]?.[it.i];
+    if (!l || !cur) {
+      if (prev) next[it.i] = prev; // hidden (feature off): kept
+      continue;
+    }
+    if (!prev && sameRect(l, cur)) continue; // still the derived one
+    const collapsed = it.prevH !== undefined;
+    // a collapsed widget reports its header height: keep the expanded one
+    const h = collapsed ? (prev?.h ?? it.prevH ?? it.h) : l.h;
+    next[it.i] = { x: l.x, y: l.y, w: l.w, h };
+  }
+  const merged = { ...stored, [bp]: next };
+  if (Object.keys(next).length === 0) delete merged[bp];
+  return JSON.stringify(merged) === JSON.stringify(stored) ? stored : merged;
+}
+
+/** Keeps well-formed rects of the known breakpoints; anything else is dropped. */
+export function parseBpLayouts(raw: string | null): BpLayouts {
+  if (raw === null) return {};
+  try {
+    const v: unknown = JSON.parse(raw);
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return {};
+    const out: BpLayouts = {};
+    for (const bp of ['md', 'sm'] as const) {
+      const m = (v as Record<string, unknown>)[bp];
+      if (typeof m !== 'object' || m === null || Array.isArray(m)) continue;
+      const rects: Record<string, Rect> = {};
+      for (const [i, r] of Object.entries(m)) {
+        const { x, y, w, h } = (r ?? {}) as Partial<Rect>;
+        if (isNum(x) && isNum(y) && isNum(w) && isNum(h) && w > 0 && h > 0)
+          rects[i] = { x, y, w, h };
+      }
+      if (Object.keys(rects).length) out[bp] = rects;
+    }
+    return out;
+  } catch {
+    return {};
   }
 }
 
@@ -129,7 +235,7 @@ export function addItem(
   type: WidgetType,
   { w, h, file }: { w?: number; h?: number; file?: string } = {},
 ): Item[] {
-  const def = DEFAULT_ITEMS.find((d) => d.type === type) ?? { w: 6, h: 10 }; // runs is not in the default layout
+  const def = WIDGETS[type].defaultSize;
   const size = { w: Math.min(w ?? def.w, COLS), h: h ?? def.h };
   return [
     ...items,
@@ -145,7 +251,7 @@ export function addItem(
   ];
 }
 
-/** Copies a widget to the top center: same type, size and file, never pinned. */
+/** Copies a widget to the top center: same type, size and file. */
 export function duplicateItem(items: readonly Item[], i: string): Item[] {
   const src = items.find((it) => it.i === i);
   return src
@@ -190,19 +296,23 @@ export function pickEditor(
 
 export function useDashboard(spaceId: string) {
   const [items, setItems] = useState(() =>
-    parseItems(localStorage.getItem(key(spaceId))),
+    parseItems(storage.get(key(spaceId))),
+  );
+  const [layouts, setLayouts] = useState(() =>
+    parseBpLayouts(storage.get(layoutsKey(spaceId))),
   );
   // debounced: a drag or raise must not serialize the whole layout synchronously each time
   const pending = useRef<() => void>(undefined);
   useEffect(() => {
     const save = () => {
-      localStorage.setItem(key(spaceId), JSON.stringify(items));
+      storage.set(key(spaceId), JSON.stringify(items));
+      storage.set(layoutsKey(spaceId), JSON.stringify(layouts));
       pending.current = undefined;
     };
     pending.current = save;
     const t = setTimeout(save, 400);
     return () => clearTimeout(t);
-  }, [spaceId, items]);
+  }, [spaceId, items, layouts]);
   useEffect(() => {
     const flush = () => pending.current?.();
     window.addEventListener('pagehide', flush);
@@ -211,10 +321,12 @@ export function useDashboard(spaceId: string) {
       flush();
     };
   }, []);
-  return {
-    items,
-    /** Layout from the grid (drag/resize); keeps the pinned flag, which the grid does not own. */
-    setLayout: (layout: readonly Item[]) =>
+  const setLayout = useLatestCallback(
+    (layout: readonly Item[], bp: Breakpoint = 'lg') => {
+      if (bp !== 'lg') {
+        setLayouts((prev) => storeLayout(items, prev, bp, layout));
+        return;
+      }
       setItems((prev) => {
         const next = prev.flatMap((old) => {
           const l = layout.find((it) => it.i === old.i);
@@ -233,27 +345,43 @@ export function useDashboard(spaceId: string) {
         });
         // the grid reports on mount too; an unchanged layout must not re-render
         return JSON.stringify(next) === JSON.stringify(prev) ? prev : next;
-      }),
-    add: (type: WidgetType, file?: string) =>
-      setItems((prev) => addItem(prev, type, { file })),
-    /** Returns the id of the copy (undefined if `i` does not exist). */
-    duplicate: (i: string) => {
-      const next = duplicateItem(items, i);
-      setItems(next);
-      return next.length > items.length ? next[next.length - 1].i : undefined;
+      });
     },
-    remove: (i: string) => setItems((prev) => prev.filter((it) => it.i !== i)),
-    togglePin: (i: string) =>
-      setItems((prev) =>
-        prev.map((it) =>
-          it.i === i ? { ...it, static: it.static ? undefined : true } : it,
+  );
+  /** Returns the id of the copy (undefined if `i` does not exist). */
+  const duplicate = useLatestCallback((i: string) => {
+    const next = duplicateItem(items, i);
+    setItems(next);
+    return next.length > items.length ? next[next.length - 1].i : undefined;
+  });
+  // the actions never change identity, so a consumer can list them as dependencies freely
+  const actions = useMemo(
+    () => ({
+      /** Layout from the grid (drag/resize) at a breakpoint. */
+      setLayout,
+      add: (type: WidgetType, file?: string) =>
+        setItems((prev) => addItem(prev, type, { file })),
+      duplicate,
+      remove: (i: string) =>
+        setItems((prev) => prev.filter((it) => it.i !== i)),
+      toggleCollapsed: (i: string) =>
+        setItems((prev) => toggleCollapsed(prev, i)),
+      setFile: (i: string, file: string) =>
+        setItems((prev) =>
+          prev.map((it) => (it.i === i ? { ...it, file } : it)),
         ),
-      ),
-    toggleCollapsed: (i: string) =>
-      setItems((prev) => toggleCollapsed(prev, i)),
-    setFile: (i: string, file: string) =>
-      setItems((prev) => prev.map((it) => (it.i === i ? { ...it, file } : it))),
-    raise: (i: string) => setItems((prev) => raiseItem(prev, i) as Item[]),
-    reset: () => setItems(defaults()),
+      raise: (i: string) => setItems((prev) => raiseItem(prev, i) as Item[]),
+      reset: () => {
+        setItems(defaults());
+        setLayouts({});
+      },
+    }),
+    [setLayout, duplicate],
+  );
+  return {
+    items,
+    /** Stored md/sm layouts; see `layoutFor`. */
+    layouts,
+    ...actions,
   };
 }

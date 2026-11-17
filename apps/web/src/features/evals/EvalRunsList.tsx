@@ -1,9 +1,10 @@
 import { Text } from '@mantine/core';
-import { DataTable } from './DataTable';
+import { EvalDataTable } from './EvalDataTable';
 import { MetricGrid } from './MetricGrid';
 import { invocationColumns, invocationRow } from './columns';
 import { useEvalRuns } from './hooks';
 import { useOpens } from './prefs';
+import { QueryError } from '../../shared/ui/QueryError';
 
 /** `group` true: `id` is the first run of a multi-run group (merged view). */
 type Props = { spaceId: string; onOpen: (id: string, group: boolean) => void };
@@ -18,7 +19,7 @@ export const NoResults = ({ dir }: { dir: string }) => (
 export function EvalRunsList({ spaceId, onOpen }: Props) {
   const { data, error } = useEvalRuns(spaceId);
   const { isOpen, toggle } = useOpens();
-  if (error) return <Text c="red">{error.message}</Text>;
+  if (error) return <QueryError error={error} />;
   if (!data) return null;
   if (!data.groups.length) return <NoResults dir={data.dir} />;
   const rows = data.groups.map(invocationRow);
@@ -29,7 +30,7 @@ export function EvalRunsList({ spaceId, onOpen }: Props) {
   return (
     <>
       <MetricGrid runs={rows} />
-      <DataTable
+      <EvalDataTable
         kind="invocations"
         highlightOnHover
         columns={columns}
@@ -39,7 +40,7 @@ export function EvalRunsList({ spaceId, onOpen }: Props) {
         detail={(r) =>
           r.sub &&
           isOpen(`inv:${r.runId}`) && (
-            <DataTable
+            <EvalDataTable
               kind="invocations"
               picker={false}
               columns={columns}

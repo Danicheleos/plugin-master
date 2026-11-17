@@ -9,7 +9,7 @@ import {
 } from '@pm/protocol';
 import { describe, expect, it } from 'vitest';
 import { EvalCompare } from './EvalCompare';
-import { TraceModal } from './TraceView';
+import { TraceModal } from './TraceModal';
 import { evalRunsKey, evalsKey } from './hooks';
 
 const metrics = {

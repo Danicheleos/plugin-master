@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { GitDiff } from './git.js';
+import { GitDiffSchema, type GitDiff } from './git.js';
 import { CaseCompareSchema, SuiteDeltaSchema } from './stats.js';
 
 export const LOOP_STAGES = [
@@ -126,6 +126,10 @@ export const CreateExperimentSchema = z.object({
 
 /** Files changed between base and the worktree (committed and uncommitted), at most 200. */
 export type ExperimentDiff = { files: GitDiff[]; truncated?: boolean };
+export const ExperimentDiffSchema: z.ZodType<ExperimentDiff> = z.object({
+  files: z.array(GitDiffSchema),
+  truncated: z.boolean().optional(),
+});
 
 export const STAGE_ROLES = ['master', 'executor', 'analyst'] as const;
 export type StageRole = (typeof STAGE_ROLES)[number];

@@ -1,29 +1,53 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { HooksResponseSchema, type HooksResponse, type PutHooks } from '@pm/protocol';
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import {
+  HooksResponseSchema,
+  type HooksResponse,
+  type PutHooks,
+} from '@pm/protocol';
 import { request } from '../../api/http';
-import { useSpaceEvents } from '../../api/ws';
+import { spaceUrl, useSpaceInvalidate } from '../../api/space';
 
 export const hooksKey = (spaceId: string) => ['hooks', spaceId];
 
-/** Hook listing; refetched when a (watched) source file changes. */
+export const hooksQueries = {
+  list: (spaceId: string) =>
+    queryOptions({
+      queryKey: hooksKey(spaceId),
+      queryFn: () =>
+        request(
+          'GET',
+          spaceUrl(spaceId, 'hooks'),
+          undefined,
+          HooksResponseSchema,
+        ),
+    }),
+};
+
+/** Hook listing. NOTE: also subscribes to `fs.changed` of its source files (refetch). */
 export function useHooks(spaceId: string) {
-  const qc = useQueryClient();
-  const q = useQuery({
-    queryKey: hooksKey(spaceId),
-    queryFn: () => request('GET', `/api/spaces/${spaceId}/hooks`, undefined, HooksResponseSchema),
-  });
-  useSpaceEvents(spaceId, (msg) => {
-    if (msg.type === 'fs.changed' && q.data?.sources.some((s) => s.file === msg.path))
-      void qc.invalidateQueries({ queryKey: hooksKey(spaceId) });
-  });
+  const q = useQuery(hooksQueries.list(spaceId));
+  useSpaceInvalidate(
+    spaceId,
+    (m) =>
+      m.type === 'fs.changed' &&
+      !!q.data?.sources.some((s) => s.file === m.path),
+    [hooksKey(spaceId)],
+  );
   return q;
 }
 
-/** PUT one event of one file; the answer is the fresh listing. */
+/** PUT one event of one file; the answer is the fresh listing, written to the cache as is. */
 export function useSaveHooks(spaceId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: PutHooks) => request('PUT', `/api/spaces/${spaceId}/hooks`, body, HooksResponseSchema),
-    onSuccess: (data: HooksResponse) => qc.setQueryData(hooksKey(spaceId), data),
+    mutationFn: (body: PutHooks) =>
+      request('PUT', spaceUrl(spaceId, 'hooks'), body, HooksResponseSchema),
+    onSuccess: (data: HooksResponse) =>
+      qc.setQueryData(hooksKey(spaceId), data),
   });
 }

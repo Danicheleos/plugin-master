@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, SegmentedControl, Text } from '@mantine/core';
 import { send } from '../../api/ws';
-import { evalRunsKey, fetchEvalRuns, useEvalSuite } from './hooks';
-import { EvalPrefsScope, useEvalPrefs } from './prefs';
+import { evalQueries, useEvalSuite } from './hooks';
+import { EvalPrefsScope, useEvalPrefs, type EvalPrefs } from './prefs';
 import { BuildSuiteDialog } from './BuildSuiteDialog';
 import { EvalRunPanel } from './EvalRunPanel';
 import { EvalRunsList } from './EvalRunsList';
@@ -11,6 +11,35 @@ import { EvalRunView } from './EvalRunView';
 import { EvalSuitesList } from './EvalSuitesList';
 import { EvalTargetsList } from './EvalTargetsList';
 import styles from './evals.module.scss';
+
+type Page = NonNullable<EvalPrefs['page']>;
+type ListProps = { spaceId: string; open: (page: Page) => void };
+
+const CaseLists = ({
+  list: List,
+  spaceId,
+  open,
+}: ListProps & { list: typeof EvalSuitesList }) => (
+  <List
+    spaceId={spaceId}
+    onOpen={(id, focusCase, compareWith) =>
+      open({ id, group: false, focusCase, compareWith })
+    }
+  />
+);
+const SuitesView = (p: ListProps) => <CaseLists list={EvalSuitesList} {...p} />;
+const TargetsView = (p: ListProps) => (
+  <CaseLists list={EvalTargetsList} {...p} />
+);
+const InvocationsView = ({ spaceId, open }: ListProps) => (
+  <EvalRunsList spaceId={spaceId} onOpen={(id, group) => open({ id, group })} />
+);
+/** The list of each grouping of the runs. */
+const LIST_BY_VIEW: Record<EvalPrefs['view'], (p: ListProps) => ReactNode> = {
+  suites: SuitesView,
+  targets: TargetsView,
+  invocations: InvocationsView,
+};
 
 type Props = {
   spaceId: string;
@@ -30,12 +59,16 @@ export function EvalsTab({ widgetId, ...props }: Props) {
   );
 }
 
+const isView = (v: string): v is EvalPrefs['view'] =>
+  Object.keys(LIST_BY_VIEW).includes(v);
+
 function EvalsBody({ spaceId, onOpenFile, spaceRoot }: Props) {
   // `page`/`view` are persisted, so Back (and a reload) returns to the same list.
   // `group`: the id is the first run of a group, shown as a merged view; `focusCase`/`compareWith`
   // come from the suites view
   const [{ page: target, view }, update] = useEvalPrefs();
   const setTarget = (page: typeof target) => update(() => ({ page }));
+  const List = LIST_BY_VIEW[view];
   const [confirmBuild, setConfirmBuild] = useState(false);
   const qc = useQueryClient();
   const suite = useEvalSuite(spaceId).data;
@@ -48,11 +81,7 @@ function EvalsBody({ spaceId, onOpenFile, spaceRoot }: Props) {
   /** A finished run opens its whole group (the run may belong to a batch). */
   async function openFinished(runId: string) {
     const data = await qc
-      .fetchQuery({
-        queryKey: evalRunsKey(spaceId),
-        queryFn: () => fetchEvalRuns(spaceId),
-        staleTime: 0,
-      })
+      .fetchQuery({ ...evalQueries.runs(spaceId), staleTime: 0 })
       .catch(() => undefined);
     const g = data?.groups.find((x) => x.runIds.includes(runId));
     setTarget(
@@ -63,80 +92,63 @@ function EvalsBody({ spaceId, onOpenFile, spaceRoot }: Props) {
   }
 
   return (
-      <div className={styles.root}>
-        <BuildSuiteDialog
-          opened={confirmBuild}
-          prompt={BUILD_SUITE_PROMPT}
-          onCancel={() => setConfirmBuild(false)}
-          onSend={build}
-        />
-        <EvalRunPanel
-          spaceId={spaceId}
-          onDone={(id) => void openFinished(id)}
-          actions={
-            <>
-              <Button
-                size="xs"
-                variant={empty ? 'filled' : 'default'}
-                onClick={() => setConfirmBuild(true)}
-              >
-                Build eval suite with agent
-              </Button>
-              <SegmentedControl
-                size="xs"
-                aria-label="Group runs by"
-                value={view}
-                onChange={(v) =>
-                  update(() => ({ view: v as typeof view, page: null }))
-                }
-                data={[
-                  { value: 'suites', label: 'Suites' },
-                  { value: 'targets', label: 'Skills & agents' },
-                  { value: 'invocations', label: 'Invocations' },
-                ]}
-              />
-              {empty && (
-                <Text c="dimmed" size="sm">
-                  This plugin has no eval cases yet.
-                </Text>
-              )}
-            </>
-          }
-        />
-        {target === null ? (
-          view === 'invocations' ? (
-            <EvalRunsList
-              spaceId={spaceId}
-              onOpen={(id, group) => setTarget({ id, group })}
+    <div className={styles.root}>
+      <BuildSuiteDialog
+        opened={confirmBuild}
+        prompt={BUILD_SUITE_PROMPT}
+        onCancel={() => setConfirmBuild(false)}
+        onSend={build}
+      />
+      <EvalRunPanel
+        spaceId={spaceId}
+        onDone={(id) => void openFinished(id)}
+        actions={
+          <>
+            <Button
+              size="xs"
+              variant={empty ? 'filled' : 'default'}
+              onClick={() => setConfirmBuild(true)}
+            >
+              Build eval suite with agent
+            </Button>
+            <SegmentedControl
+              size="xs"
+              aria-label="Group runs by"
+              value={view}
+              onChange={(v) =>
+                isView(v) && update(() => ({ view: v, page: null }))
+              }
+              data={[
+                { value: 'suites', label: 'Suites' },
+                { value: 'targets', label: 'Skills & agents' },
+                { value: 'invocations', label: 'Invocations' },
+              ]}
             />
-          ) : (
-            (() => {
-              const List = view === 'suites' ? EvalSuitesList : EvalTargetsList;
-              return (
-                <List
-                  spaceId={spaceId}
-                  onOpen={(id, focusCase, compareWith) =>
-                    setTarget({ id, group: false, focusCase, compareWith })
-                  }
-                />
-              );
-            })()
-          )
-        ) : (
-          <EvalRunView
-            spaceId={spaceId}
-            runId={target.id}
-            group={target.group}
-            focusCase={target.focusCase}
-            compareWith={target.compareWith}
-            onSwitch={(id) =>
-              setTarget({ ...target, id, compareWith: undefined })
-            }
-            onBack={() => setTarget(null)}
-            onOpenFile={onOpenFile}
-            spaceRoot={spaceRoot}
-          />
-        )}
-      </div>
+            {empty && (
+              <Text c="dimmed" size="sm">
+                This plugin has no eval cases yet.
+              </Text>
+            )}
+          </>
+        }
+      />
+      {target === null ? (
+        <List spaceId={spaceId} open={setTarget} />
+      ) : (
+        <EvalRunView
+          spaceId={spaceId}
+          runId={target.id}
+          group={target.group}
+          focusCase={target.focusCase}
+          compareWith={target.compareWith}
+          onSwitch={(id) =>
+            setTarget({ ...target, id, compareWith: undefined })
+          }
+          onBack={() => setTarget(null)}
+          onOpenFile={onOpenFile}
+          spaceRoot={spaceRoot}
+        />
+      )}
+    </div>
   );
 }

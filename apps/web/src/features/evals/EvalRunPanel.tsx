@@ -18,7 +18,7 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import type { EvalRunRequest, EvalState, EvalSuite } from '@pm/protocol';
+import type { EvalRunRequest, EvalSuite } from '@pm/protocol';
 import {
   cancelEval,
   startEval,
@@ -29,19 +29,13 @@ import {
 import { EvalProgressView } from './EvalProgressView';
 import { ExternalSeriesView } from './ExternalSeriesView';
 import { useEvalPrefs } from './prefs';
+import { buildRunRequest } from './runRequest';
 import { ScaffoldCheckbox, TrustCheckbox } from './Consent';
 import styles from './evals.module.scss';
+import { EVAL_STATE_COLOR } from '../../shared/ui/status';
 
 const GATED_TOOLS = ['Bash', 'Write', 'Edit', 'WebFetch'];
 const MODEL_ALIASES = ['haiku', 'sonnet', 'opus'];
-
-const COLORS: Record<EvalState, string> = {
-  idle: 'gray',
-  running: 'blue',
-  done: 'green',
-  failed: 'red',
-  cancelled: 'yellow',
-};
 
 type Props = {
   spaceId: string;
@@ -55,7 +49,7 @@ export function EvalRunPanel({ spaceId, onDone, actions }: Props) {
   const [form, setForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // a finished run's badge, progress and output can be dismissed; the next run shows them again
-  const [hidden, setHidden] = useState(false);
+  const [hiddenRun, setHiddenRun] = useState<string | null>(null);
   const pane = useRef<HTMLPreElement>(null);
   const running = status.state === 'running';
   const suite = useEvalSuite(spaceId).data;
@@ -70,9 +64,10 @@ export function EvalRunPanel({ spaceId, onDone, actions }: Props) {
     ]),
   ];
 
-  useEffect(() => {
-    if (running) setHidden(false);
-  }, [running]);
+  // derived: hiding applies to this exact finished status, so the next run (a new status) shows again
+  const statusKey = `${status.state}|${status.runId ?? ''}|${status.startedAt ?? ''}|${status.exitCode ?? ''}`;
+  const hidden = hiddenRun === statusKey;
+  const setHidden = (hide: boolean) => setHiddenRun(hide ? statusKey : null);
 
   useEffect(() => {
     pane.current?.scrollTo({ top: pane.current.scrollHeight });
@@ -95,7 +90,7 @@ export function EvalRunPanel({ spaceId, onDone, actions }: Props) {
           Run evals
         </Button>
         {status.state !== 'idle' && !hidden && (
-          <Badge color={COLORS[status.state]}>
+          <Badge color={EVAL_STATE_COLOR[status.state]}>
             {status.state}
             {status.exitCode !== undefined && ` (exit ${status.exitCode})`}
           </Badge>
@@ -105,7 +100,12 @@ export function EvalRunPanel({ spaceId, onDone, actions }: Props) {
             size="xs"
             color="red"
             variant="light"
-            onClick={() => void cancelEval(spaceId).catch(() => undefined)}
+            onClick={() => {
+              setError(null);
+              cancelEval(spaceId).catch((e: unknown) =>
+                setError(e instanceof Error ? e.message : String(e)),
+              );
+            }}
           >
             Cancel
           </Button>
@@ -191,16 +191,18 @@ export function RunForm({
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    void onRun({
-      maxCostUsd: Number(cost),
-      ...(cases.length && { cases }),
-      ...(tags.length && { tags }),
-      ...(runs !== '' && { runs: Number(runs) }),
-      ...(model && { model }),
-      ...(ablation && { ablation }),
-      ...(allowTools.length && { allowTools }),
-      ...(scaffold && { scaffold }),
-    });
+    void onRun(
+      buildRunRequest({
+        cost,
+        cases,
+        tags,
+        runs,
+        model,
+        ablation,
+        allowTools,
+        scaffold,
+      }),
+    );
   }
 
   return (

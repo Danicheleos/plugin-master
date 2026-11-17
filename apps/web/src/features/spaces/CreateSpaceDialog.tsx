@@ -9,7 +9,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
-import { FolderPicker } from '../folder/FolderPicker';
+import { FolderPicker } from '../folder';
 import { useCreateSpace } from './hooks';
 
 type Props = { initial?: { path: string; name: string }; onClose: () => void };

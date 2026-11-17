@@ -1,0 +1,1 @@
+export { SkillsWidget } from './SkillsWidget';

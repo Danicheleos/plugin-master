@@ -22,7 +22,7 @@ export function ContextSummary({
   onNewSession,
 }: Props) {
   const { data, error } = useSpaceConfig(spaceId);
-  const toggle = useToggleContext(spaceId);
+  const { toggle, error: toggleError } = useToggleContext(spaceId);
   const [open, setOpen] = useState(false);
   if (error)
     return (
@@ -38,6 +38,11 @@ export function ContextSummary({
       <Button variant="subtle" size="compact-sm" onClick={() => setOpen(!open)}>
         Context: {files.length} {files.length === 1 ? 'file' : 'files'}
       </Button>
+      {toggleError && (
+        <Alert color="red" mt="xs">
+          Could not update the context: {toggleError.message}
+        </Alert>
+      )}
       {open && (
         <ul>
           {files.length === 0 && <li>No pinned files</li>}

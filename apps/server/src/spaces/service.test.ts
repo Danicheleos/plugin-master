@@ -86,6 +86,7 @@ describe('spaces service', () => {
       evalRefs: {},
       disabledPlugins: [],
       autoMemory: true,
+      systemPrompt: 'preset',
 
       features: FeaturesSchema.parse({}),
     });
@@ -101,6 +102,7 @@ describe('spaces service', () => {
       evalRefs: {},
       disabledPlugins: [],
       autoMemory: true,
+      systemPrompt: 'preset',
       features: FeaturesSchema.parse({}),
     });
     await service.remove(space.id);

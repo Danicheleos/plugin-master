@@ -40,7 +40,8 @@ export function describeTool(name: string, inputJson: string): string {
   if (input && typeof input === 'object') {
     const o = input as Record<string, unknown>;
     const keys = KEYS[name] ?? [];
-    for (const k of keys) if (typeof o[k] === 'string' && o[k]) return short(o[k] as string);
+    for (const k of keys)
+      if (typeof o[k] === 'string' && o[k]) return short(o[k] as string);
     const first = Object.values(o).find((v) => typeof v === 'string' && v);
     if (first) return short(first as string);
   }

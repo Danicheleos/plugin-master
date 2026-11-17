@@ -9,12 +9,14 @@ import {
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { DataTable, type Column } from './DataTable';
+import { EvalDataTable } from './EvalDataTable';
+import type { Column } from '../../shared/table/types';
 import { caseCompareColumns } from './columns';
 import {
   EvalPrefsScope,
   copyPrefs,
   updatePrefs,
+  useEvalPref,
   useEvalPrefs,
   useOpen,
 } from './prefs';
@@ -159,10 +161,15 @@ const columns: Column<Row>[] = [
   { id: 'off', label: 'Off', off: true, render: () => 'off-cell' },
 ];
 const table = (rows: Row[]) => (
-  <DataTable kind="t" columns={columns} rows={rows} rowKey={(r) => r.name} />
+  <EvalDataTable
+    kind="t"
+    columns={columns}
+    rows={rows}
+    rowKey={(r) => r.name}
+  />
 );
 
-describe('DataTable', () => {
+describe('EvalDataTable', () => {
   it('hides columns without data by default and lets the user choose, persisted per kind', async () => {
     const { rerender } = render(table([{ name: 'a' }]), {
       wrapper: scoped('d'),
@@ -196,4 +203,43 @@ it('caseCompareColumns has a Traces column only with onTrace', () => {
   expect(
     caseCompareColumns({ onTrace: () => undefined }).map((c) => c.id),
   ).toContain('traces');
+});
+
+describe('per-key subscriptions', () => {
+  it('re-renders only the consumers of the toggled key', () => {
+    const renders = { a: 0, b: 0 };
+    const Row = ({ k }: { k: 'a' | 'b' }) => {
+      const [open, toggle] = useOpen(`row:${k}`);
+      renders[k]++;
+      return (
+        <button onClick={toggle} aria-label={k}>
+          {String(open)}
+        </button>
+      );
+    };
+    const Wrapper = scoped('perkey');
+    render(
+      <Wrapper>
+        <Row k="a" />
+        <Row k="b" />
+      </Wrapper>,
+    );
+    expect(renders).toEqual({ a: 1, b: 1 });
+    fireEvent.click(screen.getByLabelText('a'));
+    expect(screen.getAllByText('true')).toHaveLength(1);
+    expect(renders.a).toBe(2);
+    expect(renders.b).toBe(1);
+    // an unrelated setting does not re-render them either
+    act(() => updatePrefs('s.perkey', () => ({ view: 'targets' })));
+    expect(renders).toEqual({ a: 2, b: 1 });
+  });
+
+  it('useEvalPref follows its selector', () => {
+    const { result } = renderHook(() => useEvalPref((p) => p.view), {
+      wrapper: scoped('sel'),
+    });
+    expect(result.current).toBe('suites');
+    act(() => updatePrefs('s.sel', () => ({ view: 'invocations' })));
+    expect(result.current).toBe('invocations');
+  });
 });

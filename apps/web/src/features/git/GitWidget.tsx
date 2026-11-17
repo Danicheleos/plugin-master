@@ -5,6 +5,7 @@ import { CommitForm } from './CommitForm';
 import { DiffPane } from './DiffPane';
 import { StatusList } from './StatusList';
 import { useGitAction, useGitStatus } from './hooks';
+import { QueryError } from '../../shared/ui/QueryError';
 
 /** Git of the space: branch bar, changed files with a diff, commit form and log. */
 export function GitWidget({ spaceId }: { spaceId: string }) {
@@ -12,16 +13,20 @@ export function GitWidget({ spaceId }: { spaceId: string }) {
   const init = useGitAction(spaceId, 'init');
   const [open, setOpen] = useState<string | null>(null);
   const [unchecked, setUnchecked] = useState<ReadonlySet<string>>(new Set());
-  if (error) return <Text c="red" p="md">{error.message}</Text>;
+  if (error) return <QueryError error={error} p="md" />;
   if (!data) return null;
   if (!data.isRepo)
     return (
       <Stack p="md" align="flex-start" gap="xs">
         <Text size="sm">This space is not a git repository yet.</Text>
-        <Button size="xs" loading={init.isPending} onClick={() => init.mutate(undefined)}>
+        <Button
+          size="xs"
+          loading={init.isPending}
+          onClick={() => init.mutate(undefined)}
+        >
           Initialize repository
         </Button>
-        {init.error && <Text c="red" size="sm">{init.error.message}</Text>}
+        {init.error && <QueryError error={init.error} size="sm" />}
       </Stack>
     );
   // a renamed entry commits both sides, else the old path stays staged as a deletion

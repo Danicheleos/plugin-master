@@ -1,8 +1,8 @@
 import { Text } from '@mantine/core';
 import type { ExperimentComparison } from '@pm/protocol';
-import { caseCompareColumns } from '../evals/columns';
-import { DataTable } from '../evals/DataTable';
-import { SuiteVerdict } from '../evals/SuiteVerdict';
+import { caseCompareColumns } from '../evals';
+import { EvalDataTable } from '../evals';
+import { SuiteVerdict } from '../evals';
 
 // no trace buttons: worktree runs are not readable through the space trace route
 const columns = caseCompareColumns({});
@@ -17,7 +17,7 @@ export function Comparison({ data }: { data: ExperimentComparison }) {
         </Text>
       )}
       {data.suite && <SuiteVerdict suite={data.suite} />}
-      <DataTable
+      <EvalDataTable
         kind="compare-experiments"
         columns={columns}
         rows={data.cases}

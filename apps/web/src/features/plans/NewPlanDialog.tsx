@@ -33,7 +33,11 @@ export function NewPlanDialog({ spaceId, onClose, onAsk }: Props) {
         onSuccess: async (plan) => {
           if (draft) {
             // plan_set_phases works on the active plan, so it must be this one
-            await setActive.mutateAsync(plan.id).catch(() => undefined);
+            try {
+              await setActive.mutateAsync(plan.id);
+            } catch {
+              return; // the plan exists but is not active: stay open and show the error, do not draft into another plan
+            }
             onAsk(
               `Draft the phases for the active plan "${plan.title}" and set them with plan_set_phases.`,
             );
@@ -66,13 +70,19 @@ export function NewPlanDialog({ spaceId, onClose, onAsk }: Props) {
             onChange={(e) => setDraft(e.currentTarget.checked)}
           />
           {create.error && <span role="alert">{create.error.message}</span>}
+          {setActive.error && (
+            <span role="alert">
+              The plan was created but could not be made active:{' '}
+              {setActive.error.message}
+            </span>
+          )}
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={!title.trim()}
+              disabled={!title.trim() || create.isSuccess}
               loading={create.isPending}
             >
               Create

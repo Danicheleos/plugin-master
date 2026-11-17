@@ -2,7 +2,9 @@ import { z } from 'zod';
 import type { EvalLine, EvalStatus } from './evals.js';
 import type { Features } from './rest.js';
 import {
+  CHAT_EFFORTS,
   CHAT_MODES,
+  type ChatEffort,
   type AgentTask,
   type ChatEvent,
   type ChatMode,
@@ -33,6 +35,11 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
     model: z.enum(CHAT_MODEL_IDS),
   }),
   z.object({
+    type: z.literal('chat.effort'),
+    spaceId: z.string(),
+    effort: z.enum(CHAT_EFFORTS),
+  }),
+  z.object({
     type: z.literal('chat.resume'),
     spaceId: z.string(),
     sessionId: z.string(),
@@ -59,12 +66,17 @@ export type ServerMessage =
   | {
       type: 'chat.history';
       spaceId: string;
+      /** the last MAX_CHAT_ROWS rows of the conversation */
       events: ChatEvent[];
+      /** events before `events` that are no longer kept (absent = none); they are in the run trace */
+      earlier?: number;
       status: ChatStatus;
       /** permission mode of the space (applies to the live and the next session) */
       mode: ChatMode;
       /** model of the space (applies to the live and the next session) */
       model: ChatModel;
+      /** reasoning effort of the space (applies to the live and the next session) */
+      effort: ChatEffort;
       /** masterContext the session started with; null = no session */
       contextFiles: string[] | null;
       /** entries of contextFiles that did not exist at session start */
@@ -81,6 +93,8 @@ export type ServerMessage =
       mode: ChatMode;
       /** model of the space (applies to the live and the next session) */
       model: ChatModel;
+      /** reasoning effort of the space (applies to the live and the next session) */
+      effort: ChatEffort;
       /** masterContext the session started with; null = no session */
       contextFiles: string[] | null;
       /** entries of contextFiles that did not exist at session start */

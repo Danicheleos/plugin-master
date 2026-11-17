@@ -1,8 +1,10 @@
 import {
   CHAT_MODES,
+  chatWindowStart,
   type AgentTask,
   type ChatEvent,
   type ChatMode,
+  type ChatEffort,
   type ChatModel,
   type ChatStatus,
   type ContextUsage,
@@ -55,6 +57,24 @@ import {
  */
 const ROSTER_IDLE_MS = 30 * 60_000;
 
+/** Live events between two cuts of the chat window. */
+const TRIM_EVERY = 100;
+
+/** `name` (else `subagent_type`) of the Agent/Task call `toolUseId`, from the chat events. */
+function agentName(events: ChatEvent[], toolUseId: string): string | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e.kind !== 'tool_use' || e.id !== toolUseId) continue;
+    const input = (e.input ?? {}) as {
+      name?: unknown;
+      subagent_type?: unknown;
+    };
+    const name = input.name ?? input.subagent_type;
+    return typeof name === 'string' && name ? name : undefined;
+  }
+  return undefined;
+}
+
 function rosterTasks(st: Pick<State, 'tasks' | 'taskAt'>): AgentTask[] {
   const now = Date.now();
   return [...st.tasks.values()].filter(
@@ -86,7 +106,11 @@ type State = {
   mode: ChatMode;
   /** Model; survives New session/resume for the server's lifetime. */
   model: ChatModel;
+  /** Reasoning effort; survives New session/resume for the server's lifetime. */
+  effort: ChatEffort;
+  /** the last MAX_CHAT_ROWS rows (see `keepWindow`); `earlier` = events dropped before them */
   events: ChatEvent[];
+  earlier: number;
   /** Agent activity shown next to the chat; cleared with the session. */
   master: ContextUsage | null;
   current: string | null;
@@ -117,7 +141,9 @@ export function createSessionManager(
           status: 'idle',
           mode: 'auto',
           model: MASTER_MODEL,
+          effort: 'default',
           events: [],
+          earlier: 0,
           generation: 0,
           contextFiles: null,
           missingContext: [],
@@ -133,27 +159,45 @@ export function createSessionManager(
     return s;
   };
 
+  /** Drops events before the last MAX_CHAT_ROWS rows (memory and `chat.history` stay bounded). */
+  function keepWindow(s: State) {
+    const start = chatWindowStart(s.events);
+    if (!start) return;
+    s.earlier += start;
+    s.events = s.events.slice(start);
+  }
   function emit(spaceId: string, ...events: ChatEvent[]) {
-    stateOf(spaceId).events.push(...events);
+    const s = stateOf(spaceId);
+    s.events.push(...events);
+    // amortized: the window is cut once per TRIM_EVERY events, and exactly before each history
+    if (s.events.length % TRIM_EVERY < events.length) keepWindow(s);
     for (const event of events)
       hub.broadcast(spaceId, { type: 'chat.event', spaceId, event });
   }
   function broadcastStatus(spaceId: string) {
-    const { status, mode, model, contextFiles, missingContext, sessionId } =
-      stateOf(spaceId);
+    const {
+      status,
+      mode,
+      model,
+      effort,
+      contextFiles,
+      missingContext,
+      sessionId,
+    } = stateOf(spaceId);
     hub.broadcast(spaceId, {
       type: 'chat.status',
       spaceId,
       status,
       mode,
       model,
+      effort,
       contextFiles,
       missingContext,
       sessionId,
     });
   }
   /** Sets one status field and broadcasts when it changed. */
-  function setField<K extends 'status' | 'mode' | 'model'>(
+  function setField<K extends 'status' | 'mode' | 'model' | 'effort'>(
     spaceId: string,
     key: K,
     value: State[K],
@@ -165,6 +209,7 @@ export function createSessionManager(
   }
   const setStatus = (id: string, v: ChatStatus) => setField(id, 'status', v);
   const setModel = (id: string, v: ChatModel) => setField(id, 'model', v);
+  const setEffort = (id: string, v: ChatEffort) => setField(id, 'effort', v);
   const setMode = (id: string, v: ChatMode) => setField(id, 'mode', v);
   const statsMessage = (spaceId: string) => {
     const { master, current, tasks } = stateOf(spaceId);
@@ -173,7 +218,8 @@ export function createSessionManager(
       spaceId,
       master,
       current,
-      tasks: [...tasks.values()],
+      // finished tasks stay in `tasks` (roster after compaction) but are not shown
+      tasks: [...tasks.values()].filter((t) => t.status === 'running'),
     };
   };
   const broadcastStats = (spaceId: string) =>
@@ -208,6 +254,9 @@ export function createSessionManager(
     const task = mapTaskMessage(m);
     if (task) {
       const prev = st.tasks.get(task.id);
+      const name =
+        !prev && task.toolUseId && agentName(st.events, task.toolUseId);
+      if (name) task.name = name;
       st.taskAt.set(task.id, Date.now());
       st.tasks.set(task.id, {
         description: '',
@@ -220,6 +269,15 @@ export function createSessionManager(
       return broadcastStats(spaceId);
     }
     const tool = [...events].reverse().find((e) => e.kind === 'tool_use');
+    // a subagent's call is its task's action; the master's current action stays its own call
+    const parent = (m as { parent_tool_use_id?: string | null })
+      .parent_tool_use_id;
+    if (parent) {
+      const t = [...st.tasks.values()].find((x) => x.toolUseId === parent);
+      if (!t || !tool) return;
+      t.action = describeToolUse(tool.name, tool.input);
+      return broadcastStats(spaceId);
+    }
     const ended = events.some((e) => e.kind === 'result');
     if (!tool && !ended) return;
     if (tool) st.current = describeToolUse(tool.name, tool.input);
@@ -259,6 +317,7 @@ export function createSessionManager(
     let userSettings: boolean;
     let disabledPlugins: string[];
     let autoMemory: boolean;
+    let systemPrompt: 'preset' | 'custom';
     let append: string;
     let missing: string[];
     try {
@@ -266,6 +325,7 @@ export function createSessionManager(
         masterContext,
         disabledPlugins,
         autoMemory,
+        systemPrompt,
         features: { userSettings },
       } = await spaces.getConfig(spaceId));
       ({ text: append, missing } = await buildContext(
@@ -287,9 +347,11 @@ export function createSessionManager(
     );
     const session: Session = newSession({
       cwd: root,
-      appendSystemPrompt: append,
+      masterPrompt: append,
+      systemPrompt,
       mode: state.mode,
       model: state.model,
+      effort: state.effort,
       userSettings,
       disabledPlugins,
       autoMemory,
@@ -421,6 +483,20 @@ export function createSessionManager(
     }
   });
 
+  hub.on('chat.effort', async ({ spaceId, effort }) => {
+    const s = stateOf(spaceId);
+    const previous = s.effort;
+    const session = s.session;
+    setEffort(spaceId, effort);
+    try {
+      await session?.setEffort(effort);
+    } catch (e) {
+      if (s.session === session && s.effort === effort)
+        setEffort(spaceId, previous);
+      throw e;
+    }
+  });
+
   /** Drops the live session and replaces the conversation shown (and resumed next) for the space. */
   function replaceConversation(
     spaceId: string,
@@ -431,6 +507,8 @@ export function createSessionManager(
     s.generation++;
     if (s.session) drop(spaceId, s.session);
     s.events = events;
+    s.earlier = 0;
+    keepWindow(s);
     s.sessionId = sessionId;
     s.contextFiles = null;
     s.missingContext = [];
@@ -439,10 +517,12 @@ export function createSessionManager(
     hub.broadcast(spaceId, {
       type: 'chat.history',
       spaceId,
-      events: [...events],
+      events: [...s.events],
+      ...(s.earlier && { earlier: s.earlier }),
       status: 'idle',
       mode: s.mode,
       model: s.model,
+      effort: s.effort,
       contextFiles: null,
       missingContext: [],
       sessionId,
@@ -464,14 +544,25 @@ export function createSessionManager(
 
   hub.onSubscribe((spaceId, client) => {
     const s = stateOf(spaceId);
-    const { status, mode, model, contextFiles, missingContext, sessionId } = s;
+    keepWindow(s);
+    const {
+      status,
+      mode,
+      model,
+      effort,
+      contextFiles,
+      missingContext,
+      sessionId,
+    } = s;
     client.send({
       type: 'chat.history',
       spaceId,
       events: [...s.events],
+      ...(s.earlier && { earlier: s.earlier }),
       status,
       mode,
       model,
+      effort,
       contextFiles,
       missingContext,
       sessionId,
@@ -481,6 +572,8 @@ export function createSessionManager(
   });
 
   return {
+    /** Session id of the conversation shown in the space's chat (null = new session). */
+    openSession: (spaceId: string) => states.get(spaceId)?.sessionId ?? null,
     /** Shared with the experiment loop (one `permission.reply` handler). */
     permissions,
     /** Closes every live session (server shutdown). */

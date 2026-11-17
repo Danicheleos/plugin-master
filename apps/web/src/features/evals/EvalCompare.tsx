@@ -1,23 +1,40 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { MultiSelect, Table, Text } from '@mantine/core';
 import {
-  caseSide,
-  compareCases,
   type CaseCompare,
   type EvalCase,
   type EvalSuiteEntry,
 } from '@pm/protocol';
-import { changedGraders } from './compare';
+import {
+  ABLATION_BASELINE,
+  baselineKey,
+  changedGraders,
+  compareToBaseline,
+  parseBaseline,
+  type Baseline,
+} from './compare';
 import { caseCompareColumns } from './columns';
-import { DataTable, type Column } from './DataTable';
-import { score, stamp } from './format';
+import { EvalDataTable } from './EvalDataTable';
+import type { Column } from '../../shared/table/types';
+import { score, stamp } from '../../shared/format';
 import { useEvalRun, useEvalRuns, useEvalSuites } from './hooks';
 import styles from './evals.module.scss';
 
-const ABLATION = '__ablation';
-const RUN = 'run:';
-/** `initialBaseline` of a compare request: the run's own without arm. */
-export const ABLATION_BASELINE = 'ablation';
+export { ABLATION_BASELINE };
+
+/** Selected baselines at the start: the requested one, else the ablation arm when the run has one. */
+function initialChoices(
+  initialBaseline: string | undefined,
+  hasAblation: boolean,
+): string[] {
+  const start: Baseline[] =
+    initialBaseline === ABLATION_BASELINE || (!initialBaseline && hasAblation)
+      ? [{ kind: 'ablation' }]
+      : initialBaseline
+        ? [{ kind: 'run', runId: initialBaseline }]
+        : [];
+  return start.map(baselineKey);
+}
 
 /**
  * Per case: this group (with arm) against the without arm of the same run (ablation) or against
@@ -39,18 +56,19 @@ export function EvalCompare({
   focusCase?: string;
 }) {
   const hasAblation = cases.some((c) => c.arms.without.length > 0);
-  const [choices, setChoices] = useState<string[]>(
-    initialBaseline === ABLATION_BASELINE || (!initialBaseline && hasAblation)
-      ? [ABLATION]
-      : initialBaseline
-        ? [RUN + initialBaseline]
-        : [],
+  const [choices, setChoices] = useState<string[]>(() =>
+    initialChoices(initialBaseline, hasAblation),
   );
   const groups = useEvalRuns(spaceId).data?.groups ?? [];
   const suites = useEvalSuites(spaceId).data?.suites;
   const options = [
     ...(hasAblation
-      ? [{ value: ABLATION, label: 'Without the plugin (ablation arm)' }]
+      ? [
+          {
+            value: baselineKey({ kind: 'ablation' }),
+            label: 'Without the plugin (ablation arm)',
+          },
+        ]
       : []),
     ...(focusCase !== undefined
       ? caseRunOptions(suites ?? [], focusCase, runId)
@@ -59,7 +77,7 @@ export function EvalCompare({
             (g) => !g.error && !g.runIds.includes(runId) && g.id !== runId,
           )
           .map((g) => ({
-            value: g.id,
+            value: baselineKey({ kind: 'group', groupId: g.id }),
             label: `${stamp(g.startedAt) ?? g.id} · score ${score(g.score)} · ${g.casesTotal ?? 0} cases${g.modelOverride ? ` · ${g.modelOverride}` : ''}`,
           }))),
   ];
@@ -67,10 +85,12 @@ export function EvalCompare({
   if (
     initialBaseline &&
     initialBaseline !== ABLATION_BASELINE &&
-    !options.some((o) => o.value === RUN + initialBaseline)
+    !options.some(
+      (o) => o.value === baselineKey({ kind: 'run', runId: initialBaseline }),
+    )
   )
     options.push({
-      value: RUN + initialBaseline,
+      value: baselineKey({ kind: 'run', runId: initialBaseline }),
       label: `Run ${stamp(groups.flatMap((g) => g.runs).find((r) => r.id === initialBaseline)?.startedAt) ?? initialBaseline}`,
     });
   const label = (v: string) => options.find((o) => o.value === v)?.label ?? v;
@@ -134,7 +154,7 @@ function caseRunOptions(
         (Date.parse(a.startedAt ?? '') || 0),
     )
     .map(([id, r]) => ({
-      value: RUN + id,
+      value: baselineKey({ kind: 'run', runId: id }),
       label: `${stamp(r.startedAt) ?? id} · score ${score(r.score)} · ${r.model ?? 'default model'} · ${r.suite}`,
     }));
 }
@@ -150,28 +170,27 @@ function BaselineTable({
   spaceId: string;
   cases: EvalCase[];
 }) {
-  const single = choice.startsWith(RUN);
-  const baseline =
-    choice === ABLATION ? '' : single ? choice.slice(RUN.length) : choice;
-  const base = useEvalRun(spaceId, baseline, !single, baseline !== '');
+  const baseline = parseBaseline(choice);
+  const id =
+    baseline.kind === 'run'
+      ? baseline.runId
+      : baseline.kind === 'group'
+        ? baseline.groupId
+        : '';
+  const base = useEvalRun(
+    spaceId,
+    id,
+    baseline.kind === 'group',
+    baseline.kind !== 'ablation',
+  );
   const baseCases = base.data?.result.cases;
-  const pairs = cases.flatMap((c) => {
-    const b =
-      choice === ABLATION
-        ? { ...c, arms: { with: c.arms.without, without: [] }, aggregates: {} }
-        : baseCases?.find((x) => x.name === c.name);
-    return b
-      ? [
-          {
-            from: { name: c.name, ...caseSide(b) },
-            to: { name: c.name, ...caseSide(c) },
-          },
-        ]
-      : [];
-  });
-  const rows = compareCases(
-    pairs.map((p) => p.from),
-    pairs.map((p) => p.to),
+  const rows = useMemo(
+    () =>
+      compareToBaseline(
+        cases,
+        baseline.kind === 'ablation' ? 'ablation' : (baseCases ?? []),
+      ),
+    [cases, baseline.kind, baseCases],
   );
   return (
     <>
@@ -180,19 +199,19 @@ function BaselineTable({
           {title}
         </Text>
       )}
-      {baseline !== '' && base.error && (
+      {baseline.kind !== 'ablation' && base.error && (
         <Text c="red" size="sm">
           {base.error.message}
         </Text>
       )}
-      {rows.length === 0 && !base.isLoading && (
+      {rows.length === 0 && !base.isLoading && !base.error && (
         <Text size="sm" c="dimmed">
           No cases in common.
         </Text>
       )}
       {rows.length > 0 && (
         <Table.ScrollContainer minWidth={600}>
-          <DataTable
+          <EvalDataTable
             kind="compare"
             columns={columns}
             rows={rows}

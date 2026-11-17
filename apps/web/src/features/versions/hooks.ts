@@ -1,73 +1,103 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type {
-  GitDiff,
-  VersionsCompare,
-  VersionsGate,
-  VersionsResponse,
+import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  GitDiffSchema,
+  VersionsCompareSchema,
+  VersionsGateSchema,
+  VersionsResponseSchema,
 } from '@pm/protocol';
 import { request } from '../../api/http';
-import { useSpaceEvents } from '../../api/ws';
-import { useOnChatIdle } from '../chat/ChatContext';
+import { query, spaceUrl, useSpaceInvalidate } from '../../api/space';
+import { useOnChatIdle } from '../chat';
 
-const key = (id: string) => ['versions', id];
-const url = (id: string, p: string) => `/api/spaces/${id}/versions${p}`;
+export const versionsKey = (id: string) => ['versions', id];
+const versionsUrl = (id: string, ...parts: string[]) =>
+  spaceUrl(id, 'versions', ...parts);
 
-/** The commit list; git changes, a finished eval and a finished chat turn refetch every versions query. */
-export function useVersions(spaceId: string) {
+export const versionsQueries = {
+  list: (spaceId: string) =>
+    queryOptions({
+      queryKey: [...versionsKey(spaceId), 'list'],
+      queryFn: () =>
+        request(
+          'GET',
+          versionsUrl(spaceId) + query({ limit: 30 }),
+          undefined,
+          VersionsResponseSchema,
+        ),
+    }),
+  compare: (spaceId: string, from: string, to: string) =>
+    queryOptions({
+      queryKey: [...versionsKey(spaceId), 'compare', from, to],
+      queryFn: () =>
+        request(
+          'GET',
+          versionsUrl(spaceId, 'compare') + query({ from, to }),
+          undefined,
+          VersionsCompareSchema,
+        ),
+    }),
+  /** One file between the two commits. */
+  diff: (spaceId: string, from: string, to: string, path: string) =>
+    queryOptions({
+      queryKey: [...versionsKey(spaceId), 'diff', from, to, path],
+      queryFn: () =>
+        request(
+          'GET',
+          versionsUrl(spaceId, 'diff') + query({ from, to, path }),
+          undefined,
+          GitDiffSchema,
+        ),
+    }),
+  gate: (spaceId: string, from: string, to: string) =>
+    queryOptions({
+      queryKey: [...versionsKey(spaceId), 'gate', from, to],
+      queryFn: () =>
+        request(
+          'GET',
+          versionsUrl(spaceId, 'gate') + query({ from, to }),
+          undefined,
+          VersionsGateSchema,
+        ),
+    }),
+};
+
+/**
+ * Keeps every versions query of the space fresh: git changes, a finished eval and a finished chat
+ * turn refetch them all. Mount once per widget that shows versions (`useVersions` does).
+ */
+export function useVersionsRefresh(spaceId: string) {
   const qc = useQueryClient();
-  const refresh = () => void qc.invalidateQueries({ queryKey: key(spaceId) });
-  useSpaceEvents(spaceId, (msg) => {
-    if (
-      msg.type === 'git.changed' ||
-      (msg.type === 'eval.status' && msg.state === 'done')
-    )
-      refresh();
-  });
-  useOnChatIdle(refresh);
-  return useQuery({
-    queryKey: [...key(spaceId), 'list'],
-    queryFn: () => request<VersionsResponse>('GET', url(spaceId, '?limit=30')),
-  });
+  useSpaceInvalidate(
+    spaceId,
+    (m) =>
+      m.type === 'git.changed' ||
+      (m.type === 'eval.status' && m.state === 'done'),
+    [versionsKey(spaceId)],
+  );
+  useOnChatIdle(
+    () => void qc.invalidateQueries({ queryKey: versionsKey(spaceId) }),
+  );
 }
 
-const refs = (from: string, to: string) =>
-  `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+/** The commit list. NOTE: also mounts `useVersionsRefresh` (the subscriptions for all versions queries). */
+export function useVersions(spaceId: string) {
+  useVersionsRefresh(spaceId);
+  return useQuery(versionsQueries.list(spaceId));
+}
 
 export const useVersionsCompare = (spaceId: string, from: string, to: string) =>
-  useQuery({
-    queryKey: [...key(spaceId), 'compare', from, to],
-    queryFn: () =>
-      request<VersionsCompare>(
-        'GET',
-        url(spaceId, `/compare${refs(from, to)}`),
-      ),
-  });
+  useQuery(versionsQueries.compare(spaceId, from, to));
 
-/** One file between the two commits. */
 export const useVersionsDiff = (
   spaceId: string,
   from: string,
   to: string,
   path: string,
-) =>
-  useQuery({
-    queryKey: [...key(spaceId), 'diff', from, to, path],
-    queryFn: () =>
-      request<GitDiff>(
-        'GET',
-        url(spaceId, `/diff${refs(from, to)}&path=${encodeURIComponent(path)}`),
-      ),
-  });
+) => useQuery(versionsQueries.diff(spaceId, from, to, path));
 
 export const useVersionsGate = (
   spaceId: string,
   from: string,
   to: string,
   enabled: boolean,
-) =>
-  useQuery({
-    queryKey: [...key(spaceId), 'gate', from, to],
-    enabled,
-    queryFn: () =>
-      request<VersionsGate>('GET', url(spaceId, `/gate${refs(from, to)}`)),
-  });
+) => useQuery({ ...versionsQueries.gate(spaceId, from, to), enabled });

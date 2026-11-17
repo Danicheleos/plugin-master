@@ -28,9 +28,26 @@ export const FeaturesSchema = z.object({
 });
 export type Features = z.infer<typeof FeaturesSchema>;
 export type FeatureName = keyof Features;
+/** The feature each dependent feature needs (`autoCommit` and `masterLoop` need `git`). */
+export const FEATURE_REQUIRES: Readonly<
+  Partial<Record<FeatureName, FeatureName>>
+> = {
+  autoCommit: 'git',
+  masterLoop: 'git',
+};
+/** The features that must be turned off together with `name`. */
+export const featureDependents = (name: FeatureName): FeatureName[] =>
+  (Object.keys(FEATURE_REQUIRES) as FeatureName[]).filter(
+    (f) => FEATURE_REQUIRES[f] === name,
+  );
 /** Partial update (not `FeaturesSchema.partial()`: the defaults would reset omitted keys). */
 export const FeaturesInputSchema = z
-  .object({ git: z.boolean(), autoCommit: z.boolean(), masterLoop: z.boolean(), userSettings: z.boolean() })
+  .object({
+    git: z.boolean(),
+    autoCommit: z.boolean(),
+    masterLoop: z.boolean(),
+    userSettings: z.boolean(),
+  })
   .partial();
 
 export const SpaceConfigSchema = z.object({
@@ -42,11 +59,21 @@ export const SpaceConfigSchema = z.object({
   /** Pinned eval baselines: case name -> run id (as in `EvalCaseRun.runId`). Missing in the file = none. */
   evalBaselines: z.record(z.string(), z.string()).default({}),
   /** Labelled reference runs per case (`bare`, `sonnet`, ...), shown as badges in the run list. Hand-edited. */
-  evalRefs: z.record(z.string(), z.array(z.object({ label: z.string().min(1), runId: z.string().min(1) }))).default({}),
+  evalRefs: z
+    .record(
+      z.string(),
+      z.array(z.object({ label: z.string().min(1), runId: z.string().min(1) })),
+    )
+    .default({}),
   /** Plugin ids (`name@marketplace`) switched off in the master session and its subagents; missing in the file = none. */
   disabledPlugins: z.array(z.string().min(1)).default([]),
   /** Claude auto memory of the master session and its subagents; missing in the file = true (the CLI default). */
   autoMemory: z.boolean().default(true),
+  /**
+   * System prompt of the master session: `preset` = Claude Code's prompt with MASTER.md and the pinned files appended;
+   * `custom` = only MASTER.md, the pinned files and an environment section. Hand-edited; missing in the file = preset.
+   */
+  systemPrompt: z.enum(['preset', 'custom']).default('preset'),
   features: FeaturesSchema.prefault({}),
 });
 /** What the config PUT accepts; `activePlan` is changed through the plans API. */
@@ -85,5 +112,8 @@ export const SessionInfoSchema = z.object({
 export type SessionInfo = z.infer<typeof SessionInfoSchema>;
 
 /** A Claude Code session of any project on this machine (`project` = last segment of its cwd). */
-export const ProjectSessionSchema = SessionInfoSchema.extend({ project: z.string(), cwd: z.string() });
+export const ProjectSessionSchema = SessionInfoSchema.extend({
+  project: z.string(),
+  cwd: z.string(),
+});
 export type ProjectSession = z.infer<typeof ProjectSessionSchema>;

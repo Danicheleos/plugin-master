@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Checkbox, Text } from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { configKey, useSpaceConfig } from '../context/hooks';
+import { configKey, useSpaceConfig } from '../context';
 import { trustEval } from './hooks';
 
 /** "Trust this plugin" box: shown only while the plugin is untrusted; ticking grants trust (no run starts). */
@@ -31,7 +31,13 @@ export function TrustCheckbox({ spaceId }: { spaceId: string }) {
   );
 }
 
-export function ScaffoldCheckbox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+export function ScaffoldCheckbox({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
     <Checkbox
       label="Run scaffold scripts"

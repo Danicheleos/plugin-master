@@ -4,24 +4,20 @@ import react from '@vitejs/plugin-react';
 
 const apiTarget = `http://127.0.0.1:${process.env['PM_PORT'] ?? 4317}`;
 const webPort = Number(process.env['PM_WEB_PORT'] ?? 5100);
+// LAN mode (PM_LAN=1) is opt-in; the API server itself stays on loopback
+const host = process.env['PM_LAN'] === '1' ? '0.0.0.0' : 'localhost';
+// no changeOrigin: the server's Host guard checks the browser's Host (localhost, or a LAN IP in LAN mode)
+const proxy = {
+  '/api': apiTarget,
+  '/ws': { target: apiTarget, ws: true },
+};
 
 export default defineConfig(() => ({
   root: import.meta.dirname,
   cacheDir: '../../node_modules/.vite/apps/web',
-  server: {
-    port: webPort,
-    // LAN mode (PM_LAN=1) is opt-in; the API server itself stays on loopback
-    host: process.env['PM_LAN'] === '1' ? '0.0.0.0' : 'localhost',
-    // no changeOrigin: the server's Host guard checks the browser's Host (localhost, or a LAN IP in LAN mode)
-    proxy: {
-      '/api': apiTarget,
-      '/ws': { target: apiTarget, ws: true },
-    },
-  },
-  preview: {
-    port: 4300,
-    host: 'localhost',
-  },
+  server: { port: webPort, host, proxy },
+  // `pnpm start`: the production build on the same port, host and proxy as dev (the server's Origin allowlist uses webPort)
+  preview: { port: webPort, strictPort: true, host, proxy },
   plugins: [react()],
   // Uncomment this if you are using workers.
   // worker: {

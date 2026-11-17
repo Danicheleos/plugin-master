@@ -31,7 +31,15 @@ export function PickMenu({
                 label={it.title}
                 checked={selected.has(it.id)}
                 onChange={(e) =>
-                  onChange(items.map((x) => x.id).filter((id) => (id === it.id ? e.currentTarget.checked : selected.has(id))))
+                  onChange(
+                    items
+                      .map((x) => x.id)
+                      .filter((id) =>
+                        id === it.id
+                          ? e.currentTarget.checked
+                          : selected.has(id),
+                      ),
+                  )
                 }
               />
             ))}

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Text } from '@mantine/core';
-import styles from './git.module.scss';
+import styles from './diff.module.scss';
 
 export type DiffFile = { path: string; status?: string };
 

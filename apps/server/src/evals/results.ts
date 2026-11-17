@@ -19,6 +19,7 @@ import { attachMetrics, traceResponse } from './traces';
 import { readMeta } from '../versions/sidecar';
 import { readConfig } from '../spaces/config-file';
 import { buildSuites, type SuiteRun } from './suites';
+import { byStat } from './stat-cache';
 
 const MAX_DEPTH = 3;
 
@@ -55,14 +56,16 @@ async function fileIds(base: string): Promise<string[]> {
     entries
       .filter((e) => e.isFile() && e.name.endsWith('.json'))
       .map(async (e) => {
-        try {
-          const j = JSON.parse(await readFile(join(base, e.name), 'utf8'));
-          return j && typeof j === 'object' && 'schemaVersion' in j
-            ? [e.name]
-            : [];
-        } catch {
-          return [];
-        }
+        const file = join(base, e.name);
+        const isResult = await byStat(file, 'result-file', async () => {
+          try {
+            const j = JSON.parse(await readFile(file, 'utf8'));
+            return !!j && typeof j === 'object' && 'schemaVersion' in j;
+          } catch {
+            return false;
+          }
+        }).catch(() => false);
+        return isResult ? [e.name] : [];
       }),
   );
   return ids.flat();
@@ -105,8 +108,12 @@ export async function parseRun(
   base: string,
   id: string,
 ): Promise<EvalResult> {
-  const raw = await readFile(resultFile(root, base, id), 'utf8');
-  return EvalResultSchema.parse(JSON.parse(raw));
+  const file = resultFile(root, base, id);
+  const r = await byStat(file, 'result', async () =>
+    EvalResultSchema.parse(JSON.parse(await readFile(file, 'utf8'))),
+  );
+  // a copy: callers attach trace metrics in place
+  return structuredClone(r);
 }
 
 /** Every run with the data grouping needs; a broken file gets `error`, never thrown. */

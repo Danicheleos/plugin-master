@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Anchor, Badge, Code, Text } from '@mantine/core';
 import { parseDetail } from './details';
-import styles from './evals.module.scss';
+import styles from './trace.module.scss';
 
 const LONG = 80;
 

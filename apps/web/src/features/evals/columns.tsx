@@ -10,11 +10,20 @@ import {
   type EvalGroup,
   type EvalRunSummary,
 } from '@pm/protocol';
-import type { Column } from './DataTable';
+import type { Column } from '../../shared/table/types';
 import type { RepCase } from './compare';
 import { METRICS, type MetricRun, type Metrics } from './metrics';
-import { cost, delta, num, score, scoreColor, stamp, tokens } from './format';
-import { MetricChart } from './MetricChart';
+import {
+  cost,
+  delta,
+  num,
+  score,
+  scoreColor,
+  stamp,
+  tokens,
+  signed,
+} from '../../shared/format';
+import { MetricChart } from '../../shared/trace/MetricChart';
 import { FlakyMark } from './SuiteVerdict';
 import styles from './evals.module.scss';
 
@@ -53,14 +62,21 @@ export const Toggle = ({
   </Anchor>
 );
 
-/** Metric columns of rows holding `Metrics`; `get` picks them off the row; `threshold` colours the score (default 1). */
-function metricColumns<R>(
+type Metric = (typeof METRICS)[number];
+/** Id of a metric (`keyof Metrics`): the column ids of metric columns. */
+export type MetricId = Metric['id'];
+const METRIC_BY_ID = new Map<MetricId, Metric>(METRICS.map((m) => [m.id, m]));
+
+/** The column of one metric of rows holding `Metrics`; `get` picks them off the row; `threshold` colours the score (default 1). */
+function metricColumn<R>(
+  id: MetricId,
   get: (r: R) => Metrics,
-  skip: string[] = [],
   off = false,
   threshold?: (r: R) => number,
-): Column<R>[] {
-  return METRICS.filter((m) => !skip.includes(m.id)).map((m) => ({
+): Column<R> {
+  const m = METRIC_BY_ID.get(id);
+  if (!m) throw new Error(`unknown metric ${id}`);
+  return {
     id: m.id,
     label: m.short,
     title: m.label,
@@ -74,10 +90,51 @@ function metricColumns<R>(
     sortValue: (r: R) => m.get(get(r)),
     has: (r: R) => m.get(get(r)) !== undefined,
     off,
-  }));
+  };
 }
-const pick = <R,>(cols: Column<R>[], id: string) =>
-  cols.find((c) => c.id === id) as Column<R>;
+
+// metric columns do not depend on the caller, so they are built once per registry
+const RUN_METRICS = {
+  score: metricColumn<EvalCaseRun>('score', (r) => r),
+  costUsd: metricColumn<EvalCaseRun>('costUsd', (r) => r),
+  turns: metricColumn<EvalCaseRun>('turns', (r) => r),
+  maxContext: metricColumn<EvalCaseRun>('maxContext', (r) => r),
+  tokens: metricColumn<EvalCaseRun>('tokens', (r) => r),
+  durationMs: metricColumn<EvalCaseRun>('durationMs', (r) => r),
+  passRate: metricColumn<EvalCaseRun>('passRate', (r) => r),
+  recall: metricColumn<EvalCaseRun>('recall', (r) => r),
+  precision: metricColumn<EvalCaseRun>('precision', (r) => r),
+  f1: metricColumn<EvalCaseRun>('f1', (r) => r),
+} satisfies Record<MetricId, Column<EvalCaseRun>>;
+const SUITE_CASE_METRICS = METRICS.filter((m) => m.id !== 'score').map((m) =>
+  metricColumn<EvalCaseEntry>(m.id, (c) => c.latest, true),
+);
+const INVOCATION_METRICS = {
+  score: metricColumn<Invocation>(
+    'score',
+    (r) => r,
+    false,
+    (r) => r.threshold,
+  ),
+  passRate: metricColumn<Invocation>(
+    'passRate',
+    (r) => r,
+    false,
+    (r) => r.threshold,
+  ),
+  costUsd: metricColumn<Invocation>(
+    'costUsd',
+    (r) => r,
+    false,
+    (r) => r.threshold,
+  ),
+  durationMs: metricColumn<Invocation>(
+    'durationMs',
+    (r) => r,
+    false,
+    (r) => r.threshold,
+  ),
+};
 
 /** Runs of one case (skill/agent expansion, run page neighbours, suites case expansion). */
 export function runsColumns(ctx: {
@@ -87,8 +144,7 @@ export function runsColumns(ctx: {
   /** adds the "Set as baseline" / "Unset baseline" toggle per run */
   onPin?: (r: EvalCaseRun) => void;
 }): Column<EvalCaseRun>[] {
-  const m = metricColumns<EvalCaseRun>((r) => r);
-  const by = (id: string) => pick(m, id);
+  const m = RUN_METRICS;
   return [
     {
       id: 'run',
@@ -116,24 +172,22 @@ export function runsColumns(ctx: {
         </Group>
       ),
     },
-    by('score'),
+    m.score,
     {
       id: 'delta',
       label: 'Δ',
       render: (r) => colored(delta(r.delta), deltaColor(r.delta)),
       sortValue: (r) => r.delta,
     },
-    ...[
-      'costUsd',
-      'turns',
-      'maxContext',
-      'tokens',
-      'durationMs',
-      'passRate',
-      'recall',
-      'precision',
-      'f1',
-    ].map(by),
+    m.costUsd,
+    m.turns,
+    m.maxContext,
+    m.tokens,
+    m.durationMs,
+    m.passRate,
+    m.recall,
+    m.precision,
+    m.f1,
     {
       id: 'model',
       label: 'Model',
@@ -183,7 +237,6 @@ export function suiteCaseColumns(ctx: {
   /** unpins a pin whose run is gone */
   unpin?: (c: EvalCaseEntry) => void;
 }): Column<EvalCaseEntry>[] {
-  const m = metricColumns<EvalCaseEntry>((c) => c.latest, ['score'], true);
   return [
     {
       id: 'case',
@@ -272,16 +325,17 @@ export function suiteCaseColumns(ctx: {
           />
         ),
     },
-    ...m,
+    ...SUITE_CASE_METRICS,
   ];
 }
 
 const metricFormat = (id: keyof Metrics) =>
   METRICS.find((m) => m.id === id)?.format ?? num;
-const signed = (a?: number, b?: number, fmt: (n?: number) => string = num) =>
-  a === undefined || b === undefined
-    ? '-'
-    : `${b - a > 0 ? '+' : ''}${fmt(b - a)}`;
+const signedDiff = (
+  a?: number,
+  b?: number,
+  fmt: (n?: number) => string = num,
+) => (a === undefined || b === undefined ? '-' : signed(b - a, fmt));
 
 /** Case rows of two compared sides (versions, experiment, eval baseline): `from` → `to` with the delta. */
 export function caseCompareColumns(ctx: {
@@ -300,7 +354,7 @@ export function caseCompareColumns(ctx: {
     id,
     label,
     render: (c) =>
-      `${fmt(c.from && get(c.from))} → ${fmt(c.to && get(c.to))} (${signed(c.from && get(c.from), c.to && get(c.to), fmt)})`,
+      `${fmt(c.from && get(c.from))} → ${fmt(c.to && get(c.to))} (${signedDiff(c.from && get(c.from), c.to && get(c.to), fmt)})`,
     sortValue: (c) => (c.to && get(c.to)) ?? undefined,
     has: (c) =>
       !!(
@@ -374,6 +428,14 @@ function tracesColumn(
   };
 }
 
+// one summary per case row (several columns read it, on every render and sort)
+const sides = new WeakMap<RepCase, CaseSide>();
+function sideOf(c: RepCase): CaseSide {
+  let s = sides.get(c);
+  if (!s) sides.set(c, (s = caseSide(c)));
+  return s;
+}
+
 /** Cases within one run page. */
 export function runCaseColumns(ctx: {
   threshold: number;
@@ -384,7 +446,7 @@ export function runCaseColumns(ctx: {
   onOpenFile?: (path: string) => void;
   onReport: (c: RepCase) => (() => void) | undefined;
 }): Column<RepCase>[] {
-  const stats = (c: RepCase) => caseSide(c);
+  const stats = sideOf;
   return [
     {
       id: 'case',
@@ -581,13 +643,7 @@ export function invocationColumns(ctx: {
   isOpen: (r: Invocation) => boolean;
   toggle: (r: Invocation) => void;
 }): Column<Invocation>[] {
-  const m = metricColumns<Invocation>(
-    (r) => r,
-    [],
-    false,
-    (r) => r.threshold,
-  );
-  const by = (id: string) => pick(m, id);
+  const m = INVOCATION_METRICS;
   return [
     {
       id: 'run',
@@ -644,16 +700,16 @@ export function invocationColumns(ctx: {
       render: (r) => r.runs,
       sortValue: (r) => r.runs,
     },
-    by('score'),
+    m.score,
     {
       id: 'passed',
       label: 'Passed',
       render: (r) =>
         r.cases === undefined ? '-' : `${r.passed ?? 0}/${r.cases}`,
     },
-    by('passRate'),
-    by('costUsd'),
-    by('durationMs'),
+    m.passRate,
+    m.costUsd,
+    m.durationMs,
     {
       id: 'model',
       label: 'Model',

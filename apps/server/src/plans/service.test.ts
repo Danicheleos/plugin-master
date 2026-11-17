@@ -63,6 +63,7 @@ describe('plans service', () => {
       evalRefs: {},
       disabledPlugins: [],
       autoMemory: true,
+      systemPrompt: 'preset',
       features: FeaturesSchema.parse({}),
     });
   });

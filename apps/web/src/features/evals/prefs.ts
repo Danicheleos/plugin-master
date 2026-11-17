@@ -1,11 +1,13 @@
 import {
   createContext,
   createElement,
+  useCallback,
   useContext,
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
 import { z } from 'zod';
+import { createPersistentStore } from '../../shared/storage';
 
 /**
  * Persisted UI settings of one evals widget instance (never server data), in localStorage
@@ -52,10 +54,6 @@ export type EvalPrefs = z.infer<typeof PrefsSchema>;
 /** Invocations column ids before they came from the shared metric columns. */
 const RENAMED: Record<string, string> = { cost: 'costUsd', time: 'durationMs' };
 
-const storeKey = (scope: string) => `pm.evals.${scope}`;
-const entries = new Map<string, { raw: string | null; prefs: EvalPrefs }>();
-const listeners = new Set<() => void>();
-
 function parse(raw: string | null): EvalPrefs {
   let json: unknown;
   try {
@@ -70,49 +68,27 @@ function parse(raw: string | null): EvalPrefs {
   return prefs;
 }
 
+const store = createPersistentStore<EvalPrefs>({
+  key: (scope) => `pm.evals.${scope}`,
+  parse,
+  crossTab: true, // other browser tabs
+});
+
 /** Stable snapshot: the same object until the stored value or a write changes it. */
-function read(scope: string): EvalPrefs {
-  const known = entries.get(scope);
-  let raw: string | null;
-  try {
-    raw = localStorage.getItem(storeKey(scope));
-  } catch {
-    raw = known?.raw ?? null; // storage unavailable: memory only
-  }
-  if (known && known.raw === raw) return known.prefs;
-  const prefs = parse(raw);
-  entries.set(scope, { raw, prefs });
-  return prefs;
-}
+const read = (scope: string) => store.read(scope);
 
 export function updatePrefs(
   scope: string,
   fn: (p: EvalPrefs) => Partial<EvalPrefs>,
 ) {
   const prefs = { ...read(scope), ...fn(read(scope)) };
-  const raw = JSON.stringify(prefs);
-  entries.set(scope, { raw, prefs });
-  try {
-    localStorage.setItem(storeKey(scope), raw);
-  } catch {
-    /* quota or blocked storage: the settings live until reload */
-  }
-  listeners.forEach((l) => l());
+  store.write(scope, prefs);
 }
 
 /** A duplicated widget starts with the settings of its source. */
 export function copyPrefs(spaceId: string, from: string, to: string) {
   const src = read(`${spaceId}.${from}`);
   updatePrefs(`${spaceId}.${to}`, () => src);
-}
-
-function subscribe(l: () => void) {
-  listeners.add(l);
-  window.addEventListener('storage', l); // other browser tabs
-  return () => {
-    listeners.delete(l);
-    window.removeEventListener('storage', l);
-  };
 }
 
 const ScopeContext = createContext('default');
@@ -134,14 +110,32 @@ export const EvalPrefsScope = ({
 
 export function useEvalPrefs() {
   const scope = useContext(ScopeContext);
-  const prefs = useSyncExternalStore(subscribe, () => read(scope));
+  const prefs = useSyncExternalStore(store.subscribe, () => read(scope));
   return [
     prefs,
     (fn: (p: EvalPrefs) => Partial<EvalPrefs>) => updatePrefs(scope, fn),
   ] as const;
 }
 
-/** Expanded state by key; `def` until the user toggles it. */
+/**
+ * One derived value of the settings. Re-renders only when `select`'s result changes, so it must
+ * return a primitive (or an otherwise stable reference): a fresh object each call would loop.
+ */
+export function useEvalPref<T>(select: (p: EvalPrefs) => T): T {
+  const scope = useContext(ScopeContext);
+  return useSyncExternalStore(store.subscribe, () => select(read(scope)));
+}
+
+/** Writer of the scope's settings (stable identity per scope, never re-renders the caller). */
+export function useUpdatePrefs() {
+  const scope = useContext(ScopeContext);
+  return useCallback(
+    (fn: (p: EvalPrefs) => Partial<EvalPrefs>) => updatePrefs(scope, fn),
+    [scope],
+  );
+}
+
+/** Expanded state of many keys at once (re-renders on any toggle); a row of one key uses `useOpen`. */
 export function useOpens() {
   const [prefs, update] = useEvalPrefs();
   return {
@@ -151,7 +145,14 @@ export function useOpens() {
   };
 }
 
+/** Expanded state of one key; `def` until the user toggles it. Re-renders only when this key changes. */
 export function useOpen(key: string, def = false) {
-  const { isOpen, toggle } = useOpens();
-  return [isOpen(key, def), () => toggle(key, def)] as const;
+  const open = useEvalPref((p) => p.open[key] ?? def);
+  const update = useUpdatePrefs();
+  const toggle = useCallback(
+    () =>
+      update((p) => ({ open: { ...p.open, [key]: !(p.open[key] ?? def) } })),
+    [update, key, def],
+  );
+  return [open, toggle] as const;
 }

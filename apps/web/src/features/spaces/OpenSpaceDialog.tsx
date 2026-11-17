@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Alert, Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { ApiError } from '../../api/http';
-import { FolderPicker } from '../folder/FolderPicker';
+import { FolderPicker } from '../folder';
 import { useOpenSpace } from './hooks';
 
 type Props = {

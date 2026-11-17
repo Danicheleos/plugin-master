@@ -1,4 +1,4 @@
-import type { ZodType } from 'zod';
+import { z, type ZodType } from 'zod';
 import { clearToken, getToken } from './auth';
 
 export class ApiError extends Error {
@@ -10,6 +10,10 @@ export class ApiError extends Error {
     super(message);
   }
 }
+
+/** True for an `ApiError` with HTTP 404 (a missing file, directory or record). */
+export const isNotFound = (e: unknown): boolean =>
+  e instanceof ApiError && e.status === 404;
 
 async function call(
   method: string,
@@ -46,14 +50,32 @@ export async function requestText(url: string): Promise<string> {
   return (await call('GET', url)).text();
 }
 
-export async function request<T>(
+/** Response of a call whose body is deliberately not used (the UI learns the result from WS events or a refetch). */
+export const IGNORED: ZodType<unknown> = z.unknown();
+
+/**
+ * JSON request. With a `schema` the response is validated at runtime (a mismatch throws a
+ * `ZodError`, shown by the query's error state). Without one the call must not return data:
+ * use `request<void>(method, url, body?)` for 204 mutations.
+ */
+export function request<T>(
+  method: string,
+  url: string,
+  body: unknown,
+  schema: ZodType<T>,
+): Promise<T>;
+export function request<T extends void>(
   method: string,
   url: string,
   body?: unknown,
-  schema?: ZodType<T>,
-): Promise<T> {
+): Promise<T>;
+export async function request(
+  method: string,
+  url: string,
+  body?: unknown,
+  schema?: ZodType<unknown>,
+): Promise<unknown> {
   const text = await (await call(method, url, body)).text();
-  if (!text) return undefined as T;
-  const data: unknown = JSON.parse(text);
-  return schema ? schema.parse(data) : (data as T);
+  if (!schema) return undefined;
+  return schema.parse(text ? JSON.parse(text) : undefined);
 }

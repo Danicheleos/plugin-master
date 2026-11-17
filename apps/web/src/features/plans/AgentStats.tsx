@@ -1,6 +1,6 @@
 import { Group, Progress, Text, Tooltip } from '@mantine/core';
 import type { ContextUsage } from '@pm/protocol';
-import { tokens } from '../evals/format';
+import { tokens } from '../../shared/format';
 
 /** Master context against the auto-compact threshold (else the window); the window is in the tooltip. */
 export function ContextMeter({ usage }: { usage: ContextUsage }) {

@@ -5,7 +5,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { RunForm } from './EvalRunPanel';
 
 const request = vi.hoisted(() => vi.fn());
-vi.mock('../../api/http', async (orig) => ({ ...(await orig<object>()), request }));
+vi.mock('../../api/http', async (orig) => ({
+  ...(await orig<object>()),
+  request,
+}));
 
 describe('RunForm', () => {
   it('submits the cost limit (default 1) and the filters', async () => {
@@ -66,7 +69,11 @@ describe('RunForm', () => {
         <RunForm opened onClose={() => undefined} onRun={onRun} error={null} />
       </MantineProvider>,
     );
-    fireEvent.click(screen.getByLabelText('Compare with a no-plugin baseline (about 2x cost)'));
+    fireEvent.click(
+      screen.getByLabelText(
+        'Compare with a no-plugin baseline (about 2x cost)',
+      ),
+    );
     fireEvent.click(screen.getByText('Start'));
     await waitFor(() =>
       expect(onRun).toHaveBeenCalledWith({ maxCostUsd: 1, ablation: true }),
@@ -82,20 +89,30 @@ describe('RunForm', () => {
     );
     fireEvent.click(screen.getByLabelText('Run scaffold scripts'));
     fireEvent.click(screen.getByText('Start'));
-    await waitFor(() => expect(onRun).toHaveBeenCalledWith({ maxCostUsd: 1, scaffold: true }));
+    await waitFor(() =>
+      expect(onRun).toHaveBeenCalledWith({ maxCostUsd: 1, scaffold: true }),
+    );
   });
 });
 
 describe('RunForm trust checkbox', () => {
   const renderForm = (evalTrusted: boolean) => {
-    request.mockReset().mockImplementation(async (method: string, url: string) =>
-      method === 'GET' ? { evalTrusted } : { trusted: true, url },
-    );
+    request
+      .mockReset()
+      .mockImplementation(async (method: string, url: string) =>
+        method === 'GET' ? { evalTrusted } : { trusted: true, url },
+      );
     const onRun = vi.fn();
     render(
       <QueryClientProvider client={new QueryClient()}>
         <MantineProvider>
-          <RunForm opened onClose={() => undefined} onRun={onRun} error={null} spaceId="s1" />
+          <RunForm
+            opened
+            onClose={() => undefined}
+            onRun={onRun}
+            error={null}
+            spaceId="s1"
+          />
         </MantineProvider>
       </QueryClientProvider>,
     );
@@ -105,7 +122,12 @@ describe('RunForm trust checkbox', () => {
     const onRun = renderForm(false);
     fireEvent.click(await screen.findByLabelText('Trust this plugin'));
     await waitFor(() =>
-      expect(request).toHaveBeenCalledWith('PUT', '/api/spaces/s1/evals/trust', { trusted: true }),
+      expect(request).toHaveBeenCalledWith(
+        'PUT',
+        '/api/spaces/s1/evals/trust',
+        { trusted: true },
+        expect.anything(),
+      ),
     );
     expect(onRun).not.toHaveBeenCalled();
   });

@@ -1,14 +1,32 @@
 import { useState } from 'react';
-import { Alert, Button, Group, Modal, Stack, TextInput, Textarea } from '@mantine/core';
-import { useCreateFile } from '../files/hooks';
+import {
+  Alert,
+  Button,
+  Group,
+  Modal,
+  Stack,
+  TextInput,
+  Textarea,
+} from '@mantine/core';
+import { useCreateFile } from '../files';
+import { skillPath } from './paths';
 
-type Props = { spaceId: string; existing: string[]; onCreated: (name: string) => void; onClose: () => void };
+type Props = {
+  spaceId: string;
+  existing: string[];
+  onCreated: (name: string) => void;
+  onClose: () => void;
+};
 
 /** Same rules as `lintSkill`'s name check; null = valid. */
-export function skillNameError(name: string, existing: string[]): string | null {
+export function skillNameError(
+  name: string,
+  existing: string[],
+): string | null {
   if (!name) return 'Name is required';
   if (name.length > 64) return `Name is ${name.length} chars, max 64`;
-  if (!/^[a-z0-9-]+$/.test(name)) return 'Only lowercase letters, digits and hyphens';
+  if (!/^[a-z0-9-]+$/.test(name))
+    return 'Only lowercase letters, digits and hyphens';
   if (existing.includes(name)) return `Skill "${name}" already exists`;
   return null;
 }
@@ -18,7 +36,12 @@ export const skillTemplate = (name: string, description: string) =>
   `---\nname: ${name}\ndescription: ${JSON.stringify(description.trim())}\n---\n\n# ${name}\n\nDescribe what the skill does and how.\n`;
 
 /** Creates `skills/<name>/SKILL.md` (the server makes the directory). */
-export function NewSkillDialog({ spaceId, existing, onCreated, onClose }: Props) {
+export function NewSkillDialog({
+  spaceId,
+  existing,
+  onCreated,
+  onClose,
+}: Props) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [touched, setTouched] = useState(false);
@@ -38,7 +61,10 @@ export function NewSkillDialog({ spaceId, existing, onCreated, onClose }: Props)
           setTouched(true);
           if (error || descError) return;
           create.mutate(
-            { path: `skills/${name}/SKILL.md`, content: skillTemplate(name, description) },
+            {
+              path: skillPath(name),
+              content: skillTemplate(name, description),
+            },
             { onSuccess: () => onCreated(name) },
           );
         }}
@@ -48,7 +74,10 @@ export function NewSkillDialog({ spaceId, existing, onCreated, onClose }: Props)
             label="Name"
             placeholder="my-skill"
             value={name}
-            onChange={(e) => { setName(e.currentTarget.value); setTouched(true); }}
+            onChange={(e) => {
+              setName(e.currentTarget.value);
+              setTouched(true);
+            }}
             error={touched && error}
             data-autofocus
           />
@@ -63,8 +92,12 @@ export function NewSkillDialog({ spaceId, existing, onCreated, onClose }: Props)
           />
           {create.error && <Alert color="red">{create.error.message}</Alert>}
           <Group justify="flex-end">
-            <Button variant="default" onClick={onClose}>Cancel</Button>
-            <Button type="submit" loading={create.isPending}>Create</Button>
+            <Button variant="default" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={create.isPending}>
+              Create
+            </Button>
           </Group>
         </Stack>
       </form>

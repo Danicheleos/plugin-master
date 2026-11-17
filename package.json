@@ -7,6 +7,9 @@
     "dev:lan": "PM_LAN=1 nx run-many -t serve -p server web",
     "dev:self": "nx run-many -t serve -p server web -c self",
     "dev:self:lan": "PM_LAN=1 nx run-many -t serve -p server web -c self",
+    "build": "nx run-many -t build -p server web",
+    "start": "nx run-many -t start preview -p server web",
+    "start:lan": "PM_LAN=1 nx run-many -t start preview -p server web",
     "check": "nx run-many -t lint typecheck test && nx build web"
   },
   "private": true,

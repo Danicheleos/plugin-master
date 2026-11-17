@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import type { CaseCompare, SuiteDelta } from './stats.js';
+import {
+  CaseCompareSchema,
+  SuiteDeltaSchema,
+  type CaseCompare,
+  type SuiteDelta,
+} from './stats.js';
 
 /** `<out>/pm-meta.json`: what the eval ran on, written by the server before each invocation. */
 export const PmMetaSchema = z.object({
@@ -57,7 +62,12 @@ export type VersionsCompare = {
   cases: CaseCompare[];
   suite: SuiteDelta;
   /** Bytes of SKILL.md description + body. */
-  skillContext: { from: SkillSize[]; to: SkillSize[]; fromBytes: number; toBytes: number };
+  skillContext: {
+    from: SkillSize[];
+    to: SkillSize[];
+    fromBytes: number;
+    toBytes: number;
+  };
 };
 
 export type GateStatus = 'pass' | 'fail' | 'unknown';
@@ -76,3 +86,67 @@ export type VersionsGate = {
   warnings: string[];
   suite: SuiteDelta;
 };
+
+// Runtime schemas for the web client (the annotations keep them in step with the types above).
+const VersionEvalSchema: z.ZodType<VersionEval> = z.object({
+  groupId: z.string(),
+  runIds: z.array(z.string()),
+  score: z.number().optional(),
+  casesPassed: z.number().optional(),
+  casesTotal: z.number().optional(),
+  costUsd: z.number().optional(),
+  partial: z.boolean().optional(),
+  skippedPaid: z.boolean().optional(),
+  approx: z.boolean().optional(),
+  dirty: z.boolean().optional(),
+});
+export const VersionsResponseSchema: z.ZodType<VersionsResponse> = z.object({
+  commits: z.array(
+    z.object({
+      hash: z.string(),
+      date: z.string(),
+      message: z.string(),
+      author: z.string(),
+      eval: VersionEvalSchema.optional(),
+      trendable: z.boolean(),
+      delta: z.number().optional(),
+    }),
+  ),
+});
+const VersionSideSchema: z.ZodType<VersionSide> = z.object({
+  hash: z.string(),
+  groupId: z.string().optional(),
+  approx: z.boolean().optional(),
+  dirty: z.boolean().optional(),
+});
+const SkillSizesSchema = z.array(
+  z.object({ skill: z.string(), bytes: z.number() }),
+);
+export const VersionsCompareSchema: z.ZodType<VersionsCompare> = z.object({
+  from: VersionSideSchema,
+  to: VersionSideSchema,
+  files: z.array(z.object({ status: z.string(), path: z.string() })),
+  cases: z.array(CaseCompareSchema),
+  suite: SuiteDeltaSchema,
+  skillContext: z.object({
+    from: SkillSizesSchema,
+    to: SkillSizesSchema,
+    fromBytes: z.number(),
+    toBytes: z.number(),
+  }),
+});
+export const VersionsGateSchema: z.ZodType<VersionsGate> = z.object({
+  from: VersionSideSchema,
+  to: VersionSideSchema,
+  status: z.enum(['pass', 'fail', 'unknown']),
+  rules: z.array(
+    z.object({
+      id: z.enum(['no-regression', 'ctx-not-grown', 'holdout-pass']),
+      status: z.enum(['pass', 'fail', 'unknown']),
+      message: z.string(),
+      cases: z.array(z.string()).optional(),
+    }),
+  ),
+  warnings: z.array(z.string()),
+  suite: SuiteDeltaSchema,
+});

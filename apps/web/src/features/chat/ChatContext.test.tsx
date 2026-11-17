@@ -3,17 +3,23 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ChatProvider } from './ChatContext';
 
-vi.mock('./hooks', () => ({
-  useChat: () => ({
-    permission: {
-      type: 'permission.request',
-      requestId: 'r',
-      toolName: 'Experiment 1 executor: Bash',
-      input: {},
-    },
-    reply: vi.fn(),
-  }),
-}));
+vi.mock('./hooks', async () => {
+  const { initialChatState } = await import('./reducer');
+  const state = {
+    ...initialChatState,
+    permissions: [
+      {
+        type: 'permission.request',
+        spaceId: 's',
+        requestId: 'r',
+        toolName: 'Experiment 1 executor: Bash',
+        input: {},
+      },
+    ],
+  };
+  const actions = { reply: vi.fn() };
+  return { useChat: () => ({ state, actions }) };
+});
 
 describe('ChatProvider', () => {
   it('shows permission requests without a chat widget', () => {

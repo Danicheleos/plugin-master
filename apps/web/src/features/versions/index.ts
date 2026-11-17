@@ -1,0 +1,1 @@
+export { VersionsWidget } from './VersionsWidget';

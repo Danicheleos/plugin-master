@@ -5,17 +5,48 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type ReactNode,
 } from 'react';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Anchor, Button, Paper, Text, Typography } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import type { ChatEvent, TraceToolUse } from '@pm/protocol';
-import { toolKind } from '../evals/describeTool';
-import { ToolCall } from '../evals/TraceFlow';
-import { useFollowedOpen } from '../evals/useFollowedOpen';
-import { RunTraceModal } from '../runs/RunsList';
+import {
+  chatWindowStart,
+  MAX_CHAT_ROWS,
+  type ChatEvent,
+  type TraceToolUse,
+} from '@pm/protocol';
+import { toolKind } from '../../shared/trace/describeTool';
+import { ToolCall } from '../../shared/trace/TraceFlow';
+import { useFollowedOpen } from '../../shared/trace/useFollowedOpen';
+import { LiveRunTraceModal } from './LiveTraceModals';
+import {
+  callNames,
+  pairTools,
+  splitSubagents,
+  subSize,
+  subOf,
+  summary,
+  toRows,
+  type Sub,
+  type ToolEvent,
+} from './toolRows';
 import styles from './chat.module.scss';
+import { cost, shortHash } from '../../shared/format';
+
+/** Tables scroll sideways inside their wrapper instead of widening the chat. */
+const MD_COMPONENTS = {
+  table: ({
+    node: _node,
+    ...props
+  }: ComponentProps<'table'> & { node?: unknown }) => (
+    <div className={styles.tableWrap}>
+      <table {...props} />
+    </div>
+  ),
+};
 
 // memo: events are append-only and immutable, so old messages are never re-parsed as Markdown
 const Item = memo(function Item({ e }: { e: Exclude<ChatEvent, ToolEvent> }) {
@@ -24,14 +55,18 @@ const Item = memo(function Item({ e }: { e: Exclude<ChatEvent, ToolEvent> }) {
       return (
         <Paper bg="var(--mantine-color-default-hover)" px="sm">
           <Typography>
-            <Markdown>{e.text}</Markdown>
+            <Markdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+              {e.text}
+            </Markdown>
           </Typography>
         </Paper>
       );
     case 'text':
       return (
         <Typography>
-          <Markdown>{e.text}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+            {e.text}
+          </Markdown>
         </Typography>
       );
     case 'result':
@@ -40,13 +75,13 @@ const Item = memo(function Item({ e }: { e: Exclude<ChatEvent, ToolEvent> }) {
           {e.isError ? 'Finished with an error' : 'Done'}
           {e.durationMs !== undefined &&
             ` · ${(e.durationMs / 1000).toFixed(1)} s`}
-          {e.costUsd !== undefined && ` · $${e.costUsd.toFixed(4)}`}
+          {e.costUsd !== undefined && ` · ${cost(e.costUsd, 4)}`}
         </Text>
       );
     case 'commit':
       return (
         <Text size="xs" c="dimmed" my="xs">
-          Committed {e.hash.slice(0, 7)} · {e.files} file
+          Committed {shortHash(e.hash)} · {e.files} file
           {e.files === 1 ? '' : 's'} · {e.message}
         </Text>
       );
@@ -55,109 +90,13 @@ const Item = memo(function Item({ e }: { e: Exclude<ChatEvent, ToolEvent> }) {
   }
 });
 
-/** Rendered events at most (a tool group at the cut is kept whole); older ones are hidden behind a note. */
-export const MAX_ITEMS = 300;
+/** Within this many px of the bottom the list keeps following new events. */
+const STICK_PX = 24;
 
-type ToolEvent = Extract<ChatEvent, { kind: 'tool_use' | 'tool_result' }>;
-type Row =
-  | { at: number; e: Exclude<ChatEvent, ToolEvent> }
-  | { at: number; tools: ToolEvent[] };
-
-const isTool = (e: ChatEvent): e is ToolEvent =>
-  e.kind === 'tool_use' || e.kind === 'tool_result';
-
-/** Groups consecutive tool calls and results; `at` = absolute index of the first event (stable key). */
-function toRows(events: ChatEvent[], offset: number): Row[] {
-  const rows: Row[] = [];
-  events.forEach((e, i) => {
-    const last = rows[rows.length - 1];
-    if (!isTool(e)) rows.push({ at: offset + i, e });
-    else if (last && 'tools' in last) last.tools.push(e);
-    else rows.push({ at: offset + i, tools: [e] });
-  });
-  return rows;
-}
-
-function summary(tools: ToolEvent[]): string {
-  const counts = new Map<string, number>();
-  for (const t of tools)
-    if (t.kind === 'tool_use')
-      counts.set(t.name, (counts.get(t.name) ?? 0) + 1);
-  const total = [...counts.values()].reduce((a, b) => a + b, 0);
-  const names = [...counts].map(([n, c]) => (c > 1 ? `${n} ×${c}` : n));
-  const errors = tools.filter(
-    (t) => t.kind === 'tool_result' && t.isError,
-  ).length;
-  return (
-    `${total} tool call${total === 1 ? '' : 's'}` +
-    (names.length ? `: ${names.join(', ')}` : '') +
-    (errors ? ` · ${errors} error${errors === 1 ? '' : 's'}` : '')
-  );
-}
-
-/** Tool calls of a group with their results (by `toolUseId`), as trace tool uses; a result without its call stands alone. */
-function pairTools(tools: ToolEvent[]): TraceToolUse[] {
-  const out: TraceToolUse[] = [];
-  const byId = new Map<string, TraceToolUse>();
-  for (const e of tools) {
-    if (e.kind === 'tool_use') {
-      const t: TraceToolUse = {
-        id: e.id,
-        name: e.name,
-        input: JSON.stringify(e.input ?? null),
-      };
-      byId.set(e.id, t);
-      out.push(t);
-    } else {
-      const result = { preview: e.preview, isError: e.isError };
-      const t = byId.get(e.toolUseId);
-      if (t) t.result = result;
-      else out.push({ id: e.toolUseId, name: 'Result', input: '', result });
-    }
-  }
-  return out;
-}
+/** Rendered rows at most (a tool group at the cut is kept whole); older ones are hidden behind a note. */
+export const MAX_ITEMS = MAX_CHAT_ROWS;
 
 type Session = { spaceId?: string; sessionId?: string | null };
-/** Subagent tool events by their parent Agent/Task tool use id. */
-type Sub = Map<string, ToolEvent[]>;
-
-/** Master events, and the subagent tool events (`parentToolUseId`) by parent call. */
-function splitSubagents(events: ChatEvent[]): {
-  master: ChatEvent[];
-  sub: Sub;
-} {
-  const sub: Sub = new Map();
-  const master: ChatEvent[] = [];
-  for (const e of events) {
-    if (!isTool(e) || !e.parentToolUseId) {
-      master.push(e);
-      continue;
-    }
-    let list = sub.get(e.parentToolUseId);
-    if (!list) sub.set(e.parentToolUseId, (list = []));
-    list.push(e);
-  }
-  return { master, sub };
-}
-
-/** Subagent events under these calls, nested subagents included; `seen` stops a parent cycle. */
-function countSub(
-  tools: ToolEvent[],
-  sub: Sub,
-  seen = new Set<string>(),
-): number {
-  let n = 0;
-  for (const e of tools) {
-    if (e.kind !== 'tool_use' || seen.has(e.id)) continue;
-    const kids = sub.get(e.id);
-    if (!kids) continue;
-    seen.add(e.id);
-    n += kids.length + countSub(kids, sub, seen);
-  }
-  return n;
-}
-
 /** Tool call rows (paired); an Agent/Task call gets `agentAction` and its subagent's calls below it. */
 function Calls({
   calls,
@@ -191,12 +130,6 @@ function Calls({
 
 /** Paired calls per chunk inside a subagent block. */
 export const CHUNK_CALLS = 50;
-
-const callNames = (calls: TraceToolUse[]) => {
-  const counts = new Map<string, number>();
-  for (const c of calls) counts.set(c.name, (counts.get(c.name) ?? 0) + 1);
-  return [...counts].map(([n, k]) => (k > 1 ? `${n}×${k}` : n)).join(', ');
-};
 
 /** One chunk of a subagent's calls; its rows mount only while expanded. */
 function Chunk({
@@ -278,7 +211,7 @@ function SubagentCalls({
   );
 }
 
-// events are append-only: a group only changes when it grows
+// events are append-only: a group only changes when it grows (its own events or its subagents')
 const ToolGroup = memo(
   function ToolGroup({
     tools,
@@ -287,8 +220,9 @@ const ToolGroup = memo(
     sessionId,
   }: {
     tools: ToolEvent[];
+    /** the subagent events under this group's calls only (`subOf`) */
     sub: Sub;
-    /** subagent events under this group; re-renders the group when they grow */
+    /** their number: re-renders the group when they grow */
     subCount: number;
   } & Session) {
     const [open, { toggle }] = useDisclosure(false);
@@ -315,7 +249,7 @@ const ToolGroup = memo(
           </div>
         )}
         {trace && spaceId && sessionId && (
-          <RunTraceModal
+          <LiveRunTraceModal
             spaceId={spaceId}
             runId={sessionId}
             title={sessionId}
@@ -333,53 +267,96 @@ const ToolGroup = memo(
     a.sessionId === b.sessionId,
 );
 
-/** Chat events; `spaceId`/`sessionId` give Agent calls an "Open run trace" link to this session's recorded run. */
+/** Chat events, following the end while the reader is at the bottom; `spaceId`/`sessionId` give Agent calls an "Open run trace" link to this session's recorded run. */
 export const MessageList = memo(function MessageList({
   events,
+  earlier = 0,
+  conversation,
   spaceId,
   sessionId,
 }: {
   events: ChatEvent[];
+  /** events already dropped before `events` (counted in the note) */
+  earlier?: number;
+  /** changes when a conversation (re)appears: jumps to the end */
+  conversation: number;
 } & Session) {
-  // never split a tool group (a result from its call): start at the group's first event, which
-  // also keeps the group's key and open state while the window slides
-  const { master, sub } = useMemo(() => splitSubagents(events), [events]);
-  let hidden = Math.max(0, master.length - MAX_ITEMS);
-  while (hidden > 0 && isTool(master[hidden]) && isTool(master[hidden - 1]))
-    hidden--;
-  const rows = useMemo(
-    () => toRows(hidden ? master.slice(hidden) : master, hidden),
-    [master, hidden],
-  );
-  // scroll to the end only when a conversation appears (mount, resume, new session): its first
-  // event is a new object; appended events keep it, so they never move the scroll
+  // the last MAX_ITEMS rows; a tool group is never split, and rows keep their key and open
+  // state while the window slides (absolute indices)
+  const { rows, sub, hidden } = useMemo(() => {
+    const start = chatWindowStart(events, MAX_ITEMS);
+    const split = splitSubagents(events.slice(start), earlier + start);
+    return {
+      rows: toRows(split.master, split.at),
+      sub: split.sub,
+      hidden: earlier + start,
+    };
+  }, [events, earlier]);
+  const [trace, setTrace] = useState(false);
+  // follow the end only while the reader is at (or within STICK_PX of) the bottom; a conversation
+  // that (re)appears (mount, resume, new session, reconnect) always jumps to the end
   const listRef = useRef<HTMLDivElement>(null);
-  const first = events[0];
+  const atBottom = useRef(true);
+  const shownConversation = useRef<number>(undefined);
   useLayoutEffect(() => {
     const el = listRef.current;
-    if (first && el) el.scrollTop = el.scrollHeight;
-  }, [first]);
+    const fresh = shownConversation.current !== conversation;
+    shownConversation.current = conversation;
+    if (events.length === 0 || !el) return;
+    if (fresh || atBottom.current) {
+      el.scrollTop = el.scrollHeight;
+      atBottom.current = true;
+    }
+  }, [events, conversation]);
   return (
-    <div className={styles.list} ref={listRef}>
+    <div
+      className={styles.list}
+      ref={listRef}
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        atBottom.current =
+          el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
+      }}
+    >
       {hidden > 0 && (
         <Text size="xs" c="dimmed" ta="center">
-          {hidden} earlier message{hidden === 1 ? '' : 's'} hidden
+          {hidden} earlier event{hidden === 1 ? '' : 's'} hidden
+          {spaceId && sessionId && (
+            <>
+              {' · '}
+              <Anchor
+                component="button"
+                size="xs"
+                onClick={() => setTrace(true)}
+              >
+                Open full trace
+              </Anchor>
+            </>
+          )}
         </Text>
       )}
-      {rows.map((r) =>
-        'tools' in r ? (
+      {trace && spaceId && sessionId && (
+        <LiveRunTraceModal
+          spaceId={spaceId}
+          runId={sessionId}
+          title={sessionId}
+          onClose={() => setTrace(false)}
+        />
+      )}
+      {rows.map((r) => {
+        if (!('tools' in r)) return <Item key={r.at} e={r.e} />;
+        const own = subOf(r.tools, sub);
+        return (
           <ToolGroup
             key={r.at}
             tools={r.tools}
-            sub={sub}
-            subCount={countSub(r.tools, sub)}
+            sub={own}
+            subCount={subSize(own)}
             spaceId={spaceId}
             sessionId={sessionId}
           />
-        ) : (
-          <Item key={r.at} e={r.e} />
-        ),
-      )}
+        );
+      })}
     </div>
   );
 });
